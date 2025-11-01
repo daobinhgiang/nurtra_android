@@ -17,7 +17,8 @@ class DataModelsTest {
             bingeThoughts = listOf("I can't control it", "I deserve this"),
             bingeTriggers = listOf("stress", "boredom"),
             whatMattersMost = listOf("family", "career"),
-            recoveryValues = listOf("discipline", "self-care")
+            recoveryValues = listOf("discipline", "self-care"),
+            copingActivities = listOf("exercise", "meditation")
         )
 
         // Serialize to map
@@ -26,6 +27,7 @@ class DataModelsTest {
         // Verify map contains all fields
         assertEquals(listOf("1-2 years", "3-5 years"), map["struggleDuration"])
         assertEquals(listOf("daily", "several times a week"), map["bingeFrequency"])
+        assertEquals(listOf("exercise", "meditation"), map["copingActivities"])
 
         // Deserialize back
         val recovered = OnboardingSurveyResponses.fromMap(map)
@@ -61,7 +63,8 @@ class DataModelsTest {
         )
 
         val map = timerData.toMap()
-        val recovered = TimerData.fromMap(map)
+        @Suppress("UNCHECKED_CAST")
+        val recovered = TimerData.fromMap(map as Map<String, Any>)
 
         assertEquals(timerData, recovered)
     }
@@ -78,7 +81,8 @@ class DataModelsTest {
         )
 
         val map = period.toMap()
-        val recovered = BingeFreePeriod.fromMap(map)
+        @Suppress("UNCHECKED_CAST")
+        val recovered = BingeFreePeriod.fromMap(map as Map<String, Any>)
 
         assertEquals(period.id, recovered.id)
         assertEquals(period.duration, recovered.duration)
@@ -95,28 +99,37 @@ class DataModelsTest {
             bingeThoughts = listOf("I can't control it"),
             bingeTriggers = listOf("stress"),
             whatMattersMost = listOf("family"),
-            recoveryValues = listOf("discipline")
+            recoveryValues = listOf("discipline"),
+            copingActivities = listOf("exercise")
         )
 
         val user = NurtraUser(
-            userId = "user-123",
             email = "user@example.com",
-            displayName = "John Doe",
-            photoUrl = "https://example.com/photo.jpg",
-            createdAt = now,
+            name = "John Doe",
+            fcmToken = "test-fcm-token",
+            fcmTokenUpdatedAt = now,
             updatedAt = now,
             onboardingCompleted = true,
             onboardingCompletedAt = now,
-            onboardingResponses = responses
+            onboardingResponses = responses,
+            motivationalQuotesGeneratedAt = now,
+            overcomeCount = 1,
+            platform = "Android",
+            timerIsRunning = true,
+            timerLastUpdated = now,
+            timerStartTime = now
         )
 
         val map = user.toMap()
+        @Suppress("UNCHECKED_CAST")
         val recovered = NurtraUser.fromMap(map as Map<String, Any>)
 
-        assertEquals(user.userId, recovered.userId)
         assertEquals(user.email, recovered.email)
-        assertEquals(user.displayName, recovered.displayName)
+        assertEquals(user.name, recovered.name)
         assertEquals(user.onboardingCompleted, recovered.onboardingCompleted)
+        assertEquals(user.overcomeCount, recovered.overcomeCount)
+        assertEquals(user.platform, recovered.platform)
+        assertEquals(user.timerIsRunning, recovered.timerIsRunning)
         assertNotNull(recovered.onboardingResponses)
     }
 
@@ -138,11 +151,12 @@ class DataModelsTest {
     fun testNurtraUserDefaultValues() {
         val user = NurtraUser()
 
-        assertEquals("", user.userId)
         assertEquals("", user.email)
-        assertNull(user.displayName)
-        assertNull(user.photoUrl)
+        assertNull(user.name)
+        assertNull(user.fcmToken)
+        assertEquals(0, user.overcomeCount)
         assertFalse(user.onboardingCompleted)
+        assertFalse(user.timerIsRunning)
     }
 
     @Test

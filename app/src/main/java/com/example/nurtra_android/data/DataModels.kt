@@ -8,48 +8,60 @@ import java.util.Date
  * Mirrors the structure used in the Swift app's FirestoreManager
  */
 data class NurtraUser(
-    val userId: String = "",
     val email: String = "",
-    val displayName: String? = null,
-    val photoUrl: String? = null,
+    val name: String? = null,
     val fcmToken: String? = null,
-    val createdAt: Timestamp? = null,
+    val fcmTokenUpdatedAt: Timestamp? = null,
     val updatedAt: Timestamp? = null,
     val onboardingCompleted: Boolean = false,
     val onboardingCompletedAt: Timestamp? = null,
-    val onboardingResponses: OnboardingSurveyResponses? = null
+    val onboardingResponses: OnboardingSurveyResponses? = null,
+    val motivationalQuotesGeneratedAt: Timestamp? = null,
+    val overcomeCount: Int = 0,
+    val platform: String? = null,
+    val timerIsRunning: Boolean = false,
+    val timerLastUpdated: Timestamp? = null,
+    val timerStartTime: Timestamp? = null
 ) {
     companion object {
         fun fromMap(map: Map<String, Any>): NurtraUser {
             return NurtraUser(
-                userId = map["userId"] as? String ?: "",
                 email = map["email"] as? String ?: "",
-                displayName = map["displayName"] as? String,
-                photoUrl = map["photoUrl"] as? String,
+                name = map["name"] as? String,
                 fcmToken = map["fcmToken"] as? String,
-                createdAt = map["createdAt"] as? Timestamp,
+                fcmTokenUpdatedAt = map["fcmTokenUpdatedAt"] as? Timestamp,
                 updatedAt = map["updatedAt"] as? Timestamp,
                 onboardingCompleted = map["onboardingCompleted"] as? Boolean ?: false,
                 onboardingCompletedAt = map["onboardingCompletedAt"] as? Timestamp,
-                onboardingResponses = (map["onboardingResponses"] as? Map<String, Any>)?.let {
+                onboardingResponses = @Suppress("UNCHECKED_CAST") (map["onboardingResponses"] as? Map<String, Any>)?.let {
                     OnboardingSurveyResponses.fromMap(it)
-                }
+                },
+                motivationalQuotesGeneratedAt = map["motivationalQuotesGeneratedAt"] as? Timestamp,
+                overcomeCount = (map["overcomeCount"] as? Number)?.toInt() ?: 0,
+                platform = map["platform"] as? String,
+                timerIsRunning = map["timerIsRunning"] as? Boolean ?: false,
+                timerLastUpdated = map["timerLastUpdated"] as? Timestamp,
+                timerStartTime = map["timerStartTime"] as? Timestamp
             )
         }
     }
 
     fun toMap(): Map<String, Any?> {
         return mapOf(
-            "userId" to userId,
             "email" to email,
-            "displayName" to displayName,
-            "photoUrl" to photoUrl,
+            "name" to name,
             "fcmToken" to fcmToken,
-            "createdAt" to createdAt,
+            "fcmTokenUpdatedAt" to fcmTokenUpdatedAt,
             "updatedAt" to updatedAt,
             "onboardingCompleted" to onboardingCompleted,
             "onboardingCompletedAt" to onboardingCompletedAt,
-            "onboardingResponses" to onboardingResponses?.toMap()
+            "onboardingResponses" to onboardingResponses?.toMap(),
+            "motivationalQuotesGeneratedAt" to motivationalQuotesGeneratedAt,
+            "overcomeCount" to overcomeCount,
+            "platform" to platform,
+            "timerIsRunning" to timerIsRunning,
+            "timerLastUpdated" to timerLastUpdated,
+            "timerStartTime" to timerStartTime
         )
     }
 }
@@ -66,7 +78,8 @@ data class OnboardingSurveyResponses(
     val bingeThoughts: List<String> = emptyList(),
     val bingeTriggers: List<String> = emptyList(),
     val whatMattersMost: List<String> = emptyList(),
-    val recoveryValues: List<String> = emptyList()
+    val recoveryValues: List<String> = emptyList(),
+    val copingActivities: List<String> = emptyList()
 ) {
     companion object {
         fun fromMap(map: Map<String, Any>): OnboardingSurveyResponses {
@@ -78,7 +91,8 @@ data class OnboardingSurveyResponses(
                 bingeThoughts = (map["bingeThoughts"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 bingeTriggers = (map["bingeTriggers"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 whatMattersMost = (map["whatMattersMost"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
-                recoveryValues = (map["recoveryValues"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                recoveryValues = (map["recoveryValues"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                copingActivities = (map["copingActivities"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
             )
         }
     }
@@ -92,7 +106,8 @@ data class OnboardingSurveyResponses(
             "bingeThoughts" to bingeThoughts,
             "bingeTriggers" to bingeTriggers,
             "whatMattersMost" to whatMattersMost,
-            "recoveryValues" to recoveryValues
+            "recoveryValues" to recoveryValues,
+            "copingActivities" to copingActivities
         )
     }
 }
@@ -119,6 +134,7 @@ data class MotivationalQuote(
     }
 
     fun toMap(): Map<String, Any> {
+        @Suppress("UNCHECKED_CAST")
         return mapOf(
             "id" to id,
             "text" to text,

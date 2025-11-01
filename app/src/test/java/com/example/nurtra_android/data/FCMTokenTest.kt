@@ -13,17 +13,14 @@ class FCMTokenTest {
      */
     @Test
     fun testNurtraUserWithFCMToken() {
-        val userId = "test-user-123"
         val email = "test@example.com"
         val fcmToken = "eO2bI_example_fcm_token_12345"
 
         val user = NurtraUser(
-            userId = userId,
             email = email,
             fcmToken = fcmToken
         )
 
-        assertEquals(userId, user.userId)
         assertEquals(email, user.email)
         assertEquals(fcmToken, user.fcmToken)
     }
@@ -33,15 +30,13 @@ class FCMTokenTest {
      */
     @Test
     fun testNurtraUserMapConversionWithFCMToken() {
-        val userId = "test-user-456"
         val email = "test2@example.com"
         val fcmToken = "another_example_fcm_token_67890"
-        val displayName = "Test User"
+        val name = "Test User"
 
         val originalUser = NurtraUser(
-            userId = userId,
             email = email,
-            displayName = displayName,
+            name = name,
             fcmToken = fcmToken
         )
 
@@ -50,17 +45,16 @@ class FCMTokenTest {
 
         // Verify FCM token is in map
         assertEquals(fcmToken, userMap["fcmToken"])
-        assertEquals(userId, userMap["userId"])
         assertEquals(email, userMap["email"])
-        assertEquals(displayName, userMap["displayName"])
+        assertEquals(name, userMap["name"])
 
         // Convert back from map
-        val reconstructedUser = NurtraUser.fromMap(userMap)
+        @Suppress("UNCHECKED_CAST")
+        val reconstructedUser = NurtraUser.fromMap(userMap as Map<String, Any>)
 
         // Verify all fields match
-        assertEquals(originalUser.userId, reconstructedUser.userId)
         assertEquals(originalUser.email, reconstructedUser.email)
-        assertEquals(originalUser.displayName, reconstructedUser.displayName)
+        assertEquals(originalUser.name, reconstructedUser.name)
         assertEquals(originalUser.fcmToken, reconstructedUser.fcmToken)
     }
 
@@ -70,7 +64,6 @@ class FCMTokenTest {
     @Test
     fun testNurtraUserWithNullFCMToken() {
         val user = NurtraUser(
-            userId = "test-user-789",
             email = "test3@example.com",
             fcmToken = null
         )
@@ -79,7 +72,8 @@ class FCMTokenTest {
 
         // Convert to and from map
         val userMap = user.toMap()
-        val reconstructedUser = NurtraUser.fromMap(userMap)
+        @Suppress("UNCHECKED_CAST")
+        val reconstructedUser = NurtraUser.fromMap(userMap as Map<String, Any>)
 
         assertNull(reconstructedUser.fcmToken)
     }
@@ -90,13 +84,11 @@ class FCMTokenTest {
     @Test
     fun testNurtraUserFromMapWithoutFCMToken() {
         val map = mapOf(
-            "userId" to "test-user-000",
             "email" to "test4@example.com"
         )
 
         val user = NurtraUser.fromMap(map)
 
-        assertEquals("test-user-000", user.userId)
         assertEquals("test4@example.com", user.email)
         assertNull(user.fcmToken)
     }
@@ -110,7 +102,6 @@ class FCMTokenTest {
         val updatedToken = "updated_fcm_token"
 
         val user1 = NurtraUser(
-            userId = "user-123",
             email = "user@example.com",
             fcmToken = initialToken
         )
@@ -123,7 +114,8 @@ class FCMTokenTest {
             this["fcmToken"] = updatedToken
         }
 
-        val user2 = NurtraUser.fromMap(userMap)
+        @Suppress("UNCHECKED_CAST")
+        val user2 = NurtraUser.fromMap(userMap as Map<String, Any>)
         assertEquals(updatedToken, user2.fcmToken)
     }
 }

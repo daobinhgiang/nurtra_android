@@ -70,8 +70,7 @@ class AuthViewModel : ViewModel() {
                     firestoreManager.createOrUpdateUser(
                         userId = firebaseUser.uid,
                         email = firebaseUser.email ?: email,
-                        displayName = firebaseUser.displayName,
-                        photoUrl = firebaseUser.photoUrl?.toString()
+                        name = firebaseUser.displayName
                     )
                     
                     // Get and save FCM token
@@ -102,8 +101,7 @@ class AuthViewModel : ViewModel() {
                     firestoreManager.createOrUpdateUser(
                         userId = firebaseUser.uid,
                         email = firebaseUser.email ?: email,
-                        displayName = firebaseUser.displayName,
-                        photoUrl = firebaseUser.photoUrl?.toString()
+                        name = firebaseUser.displayName
                     )
                     
                     // Get and save FCM token
@@ -134,8 +132,7 @@ class AuthViewModel : ViewModel() {
                     firestoreManager.createOrUpdateUser(
                         userId = firebaseUser.uid,
                         email = firebaseUser.email ?: "",
-                        displayName = firebaseUser.displayName,
-                        photoUrl = firebaseUser.photoUrl?.toString()
+                        name = firebaseUser.displayName
                     )
                     
                     // Get and save FCM token

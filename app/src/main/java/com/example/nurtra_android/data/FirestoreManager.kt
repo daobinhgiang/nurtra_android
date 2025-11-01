@@ -30,18 +30,16 @@ class FirestoreManager {
     suspend fun createOrUpdateUser(
         userId: String,
         email: String,
-        displayName: String? = null,
-        photoUrl: String? = null
+        name: String? = null,
+        platform: String = "Android"
     ): Result<NurtraUser> = try {
         val now = Timestamp.now()
         
         val userData: Map<String, Any?> = mapOf(
-            "userId" to userId,
             "email" to email,
-            "displayName" to displayName,
-            "photoUrl" to photoUrl,
+            "name" to name,
             "updatedAt" to now,
-            "createdAt" to now // Only set on initial creation, but won't hurt to set here
+            "platform" to platform
         )
 
         db.collection(USERS_COLLECTION)
@@ -51,12 +49,10 @@ class FirestoreManager {
 
         Log.d(TAG, "User document created/updated: $userId")
         val nurtraUser = NurtraUser(
-            userId = userId,
             email = email,
-            displayName = displayName,
-            photoUrl = photoUrl,
-            createdAt = now,
-            updatedAt = now
+            name = name,
+            updatedAt = now,
+            platform = platform
         )
         Result.success(nurtraUser)
     } catch (e: Exception) {
@@ -216,9 +212,11 @@ class FirestoreManager {
      * Updates the FCM token for a user in Firestore
      */
     suspend fun updateFCMToken(userId: String, fcmToken: String): Result<Unit> = try {
+        val now = Timestamp.now()
         val updateData: Map<String, Any> = mapOf(
             "fcmToken" to fcmToken,
-            "updatedAt" to Timestamp.now()
+            "fcmTokenUpdatedAt" to now,
+            "updatedAt" to now
         )
 
         db.collection(USERS_COLLECTION)
