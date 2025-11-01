@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.AuthCredential
+import com.example.nurtra_android.data.FirestoreManager
+import com.example.nurtra_android.data.FCMTokenManager
+import com.example.nurtra_android.data.NurtraUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,11 +17,14 @@ import kotlinx.coroutines.launch
 data class AuthUiState(
     val isLoading: Boolean = false,
     val user: FirebaseUser? = null,
+    val nurtraUser: NurtraUser? = null,
     val errorMessage: String? = null
 )
 
 class AuthViewModel : ViewModel() {
     private val auth = FirebaseAuth.getInstance()
+    private val firestoreManager = FirestoreManager()
+    private val fcmTokenManager = FCMTokenManager()
     
     private val _uiState = MutableStateFlow(AuthUiState(user = auth.currentUser))
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
@@ -26,7 +32,29 @@ class AuthViewModel : ViewModel() {
     init {
         // Listen to auth state changes
         auth.addAuthStateListener { firebaseAuth ->
-            _uiState.value = _uiState.value.copy(user = firebaseAuth.currentUser)
+            val currentUser = firebaseAuth.currentUser
+            _uiState.value = _uiState.value.copy(user = currentUser)
+            
+            // Load Firestore user data if authenticated
+            if (currentUser != null) {
+                loadNurtraUser(currentUser.uid)
+            } else {
+                _uiState.value = _uiState.value.copy(nurtraUser = null)
+            }
+        }
+    }
+    
+    private fun loadNurtraUser(userId: String) {
+        viewModelScope.launch {
+            val result = firestoreManager.getUser(userId)
+            result.onSuccess { nurtraUser ->
+                _uiState.value = _uiState.value.copy(nurtraUser = nurtraUser)
+            }.onFailure { error ->
+                // Log error but don't fail - user may not have Firestore document yet
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Could not load user profile: ${error.message}"
+                )
+            }
         }
     }
     
@@ -34,7 +62,25 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-                auth.signInWithEmailAndPassword(email, password).await()
+                val authResult = auth.signInWithEmailAndPassword(email, password).await()
+                
+                // Create or update Firestore user document
+                val firebaseUser = authResult.user
+                if (firebaseUser != null) {
+                    firestoreManager.createOrUpdateUser(
+                        userId = firebaseUser.uid,
+                        email = firebaseUser.email ?: email,
+                        displayName = firebaseUser.displayName,
+                        photoUrl = firebaseUser.photoUrl?.toString()
+                    )
+                    
+                    // Get and save FCM token
+                    val fcmToken = fcmTokenManager.getToken()
+                    if (fcmToken != null) {
+                        firestoreManager.updateFCMToken(firebaseUser.uid, fcmToken)
+                    }
+                }
+                
                 _uiState.value = _uiState.value.copy(isLoading = false)
                 onResult(true, null)
             } catch (e: Exception) {
@@ -48,7 +94,25 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-                auth.createUserWithEmailAndPassword(email, password).await()
+                val authResult = auth.createUserWithEmailAndPassword(email, password).await()
+                
+                // Create Firestore user document
+                val firebaseUser = authResult.user
+                if (firebaseUser != null) {
+                    firestoreManager.createOrUpdateUser(
+                        userId = firebaseUser.uid,
+                        email = firebaseUser.email ?: email,
+                        displayName = firebaseUser.displayName,
+                        photoUrl = firebaseUser.photoUrl?.toString()
+                    )
+                    
+                    // Get and save FCM token
+                    val fcmToken = fcmTokenManager.getToken()
+                    if (fcmToken != null) {
+                        firestoreManager.updateFCMToken(firebaseUser.uid, fcmToken)
+                    }
+                }
+                
                 _uiState.value = _uiState.value.copy(isLoading = false)
                 onResult(true, null)
             } catch (e: Exception) {
@@ -62,7 +126,25 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
-                auth.signInWithCredential(credential).await()
+                val authResult = auth.signInWithCredential(credential).await()
+                
+                // Create or update Firestore user document
+                val firebaseUser = authResult.user
+                if (firebaseUser != null) {
+                    firestoreManager.createOrUpdateUser(
+                        userId = firebaseUser.uid,
+                        email = firebaseUser.email ?: "",
+                        displayName = firebaseUser.displayName,
+                        photoUrl = firebaseUser.photoUrl?.toString()
+                    )
+                    
+                    // Get and save FCM token
+                    val fcmToken = fcmTokenManager.getToken()
+                    if (fcmToken != null) {
+                        firestoreManager.updateFCMToken(firebaseUser.uid, fcmToken)
+                    }
+                }
+                
                 _uiState.value = _uiState.value.copy(isLoading = false)
                 onResult(true, null)
             } catch (e: Exception) {

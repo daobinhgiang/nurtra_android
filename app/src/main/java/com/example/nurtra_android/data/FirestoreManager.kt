@@ -1,0 +1,251 @@
+package com.example.nurtra_android.data
+
+import android.util.Log
+import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
+import java.util.UUID
+
+/**
+ * Manages Firestore operations for user data
+ * Ensures consistency with the Swift app's data structure
+ */
+class FirestoreManager {
+    private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
+    private val TAG = "FirestoreManager"
+
+    companion object {
+        private const val USERS_COLLECTION = "users"
+        private const val TIMER_SESSIONS_COLLECTION = "timerSessions"
+        private const val BINGE_FREE_PERIODS_COLLECTION = "bingeFreePeriods"
+        private const val MOTIVATIONAL_QUOTES_COLLECTION = "motivationalQuotes"
+    }
+
+    /**
+     * Creates or updates a user document in Firestore after authentication
+     * This should be called after successful sign up or sign in
+     */
+    suspend fun createOrUpdateUser(
+        userId: String,
+        email: String,
+        displayName: String? = null,
+        photoUrl: String? = null
+    ): Result<NurtraUser> = try {
+        val now = Timestamp.now()
+        
+        val userData: Map<String, Any?> = mapOf(
+            "userId" to userId,
+            "email" to email,
+            "displayName" to displayName,
+            "photoUrl" to photoUrl,
+            "updatedAt" to now,
+            "createdAt" to now // Only set on initial creation, but won't hurt to set here
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .set(userData)
+            .await()
+
+        Log.d(TAG, "User document created/updated: $userId")
+        val nurtraUser = NurtraUser(
+            userId = userId,
+            email = email,
+            displayName = displayName,
+            photoUrl = photoUrl,
+            createdAt = now,
+            updatedAt = now
+        )
+        Result.success(nurtraUser)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error creating/updating user: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Retrieves user data from Firestore
+     */
+    suspend fun getUser(userId: String): Result<NurtraUser?> = try {
+        val snapshot = db.collection(USERS_COLLECTION)
+            .document(userId)
+            .get()
+            .await()
+
+        val user = snapshot.data?.let { NurtraUser.fromMap(it) }
+        Result.success(user)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching user: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Updates user onboarding status and responses
+     */
+    suspend fun updateOnboardingData(
+        userId: String,
+        responses: OnboardingSurveyResponses
+    ): Result<Unit> = try {
+        val updateData: Map<String, Any> = mapOf(
+            "onboardingCompleted" to true,
+            "onboardingCompletedAt" to Timestamp.now(),
+            "onboardingResponses" to responses.toMap(),
+            "updatedAt" to Timestamp.now()
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Onboarding data updated for user: $userId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error updating onboarding data: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Saves a timer session
+     */
+    suspend fun saveTimerSession(
+        userId: String,
+        timerData: TimerData
+    ): Result<String> = try {
+        val sessionId = UUID.randomUUID().toString()
+        val sessionData = timerData.toMap()
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(TIMER_SESSIONS_COLLECTION)
+            .document(sessionId)
+            .set(sessionData)
+            .await()
+
+        Log.d(TAG, "Timer session saved: $sessionId for user: $userId")
+        Result.success(sessionId)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error saving timer session: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Saves a binge-free period
+     */
+    suspend fun saveBingeFreePeriod(
+        userId: String,
+        bingeFreePeriod: BingeFreePeriod
+    ): Result<String> = try {
+        val periodId = UUID.randomUUID().toString()
+        val periodData = bingeFreePeriod.copy(id = periodId).toMap()
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(BINGE_FREE_PERIODS_COLLECTION)
+            .document(periodId)
+            .set(periodData)
+            .await()
+
+        Log.d(TAG, "Binge-free period saved: $periodId for user: $userId")
+        Result.success(periodId)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error saving binge-free period: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Retrieves all binge-free periods for a user
+     */
+    suspend fun getBingeFreePeriods(userId: String): Result<List<BingeFreePeriod>> = try {
+        val snapshot = db.collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(BINGE_FREE_PERIODS_COLLECTION)
+            .orderBy("createdAt")
+            .get()
+            .await()
+
+        val periods = snapshot.documents.mapNotNull { doc ->
+            doc.data?.let { BingeFreePeriod.fromMap(it) }
+        }
+        Result.success(periods)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching binge-free periods: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Retrieves all timer sessions for a user
+     */
+    suspend fun getTimerSessions(userId: String): Result<List<TimerData>> = try {
+        val snapshot = db.collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(TIMER_SESSIONS_COLLECTION)
+            .orderBy("startTime")
+            .get()
+            .await()
+
+        val sessions = snapshot.documents.mapNotNull { doc ->
+            doc.data?.let { TimerData.fromMap(it) }
+        }
+        Result.success(sessions)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching timer sessions: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Retrieves all motivational quotes
+     */
+    suspend fun getMotivationalQuotes(): Result<List<MotivationalQuote>> = try {
+        val snapshot = db.collection(MOTIVATIONAL_QUOTES_COLLECTION)
+            .orderBy("order")
+            .get()
+            .await()
+
+        val quotes = snapshot.documents.mapNotNull { doc ->
+            doc.data?.let { MotivationalQuote.fromMap(it) }
+        }
+        Result.success(quotes)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching motivational quotes: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Updates the FCM token for a user in Firestore
+     */
+    suspend fun updateFCMToken(userId: String, fcmToken: String): Result<Unit> = try {
+        val updateData: Map<String, Any> = mapOf(
+            "fcmToken" to fcmToken,
+            "updatedAt" to Timestamp.now()
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "FCM token updated for user: $userId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error updating FCM token: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Deletes user data from Firestore
+     */
+    suspend fun deleteUser(userId: String): Result<Unit> = try {
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .delete()
+            .await()
+
+        Log.d(TAG, "User document deleted: $userId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error deleting user: ${e.message}", e)
+        Result.failure(e)
+    }
+}
