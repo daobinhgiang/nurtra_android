@@ -452,16 +452,19 @@ fun CameraPreviewView(
     val context = LocalContext.current
     val previewView = remember { PreviewView(context) }
     val imageCapture = remember { ImageCapture.Builder().build() }
+    val cameraProviderState = remember { mutableStateOf<ProcessCameraProvider?>(null) }
     
-    LaunchedEffect(previewView) {
-        val cameraProvider = context.getCameraProvider()
-        val preview = Preview.Builder().build().also {
-            it.setSurfaceProvider(previewView.surfaceProvider)
-        }
-        
-        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-        
+    LaunchedEffect(previewView, lifecycleOwner) {
         try {
+            val cameraProvider = context.getCameraProvider()
+            cameraProviderState.value = cameraProvider
+            
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
+            }
+            
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
                 lifecycleOwner,
@@ -471,6 +474,18 @@ fun CameraPreviewView(
             )
         } catch (e: Exception) {
             // Handle camera binding error
+        }
+    }
+    
+    DisposableEffect(Unit) {
+        onDispose {
+            // Clean up camera when composable is disposed
+            try {
+                cameraProviderState.value?.unbindAll()
+                cameraProviderState.value = null
+            } catch (e: Exception) {
+                // Handle cleanup error
+            }
         }
     }
     
