@@ -36,6 +36,7 @@ import com.example.nurtra_android.auth.LoginScreen
 import com.example.nurtra_android.auth.SignUpScreen
 import com.example.nurtra_android.data.NotificationHelper
 import com.example.nurtra_android.data.FCMTokenManager
+import com.example.nurtra_android.data.FirestoreManager
 import com.example.nurtra_android.theme.NurtraTheme
 import com.google.firebase.auth.FirebaseAuth
 import android.os.Build
@@ -194,6 +195,7 @@ fun HomeScreen() {
             is Screen.Timer -> {
                 TimerScreen(
                     timerViewModel = timerViewModel,
+                    authViewModel = viewModel,
                     onNavigateToCamera = { currentScreen = Screen.Camera }
                 )
             }
@@ -201,7 +203,23 @@ fun HomeScreen() {
                 CameraScreen(
                     timerViewModel = timerViewModel,
                     onNavigateBack = { currentScreen = Screen.Timer },
-                    onOvercome = { currentScreen = Screen.Timer },
+                    onOvercome = {
+                        // Increment overcomeCount in Firestore
+                        val currentUser = FirebaseAuth.getInstance().currentUser
+                        if (currentUser != null) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val firestoreManager = FirestoreManager()
+                                firestoreManager.incrementOvercomeCount(currentUser.uid).onSuccess {
+                                    // Refresh user data in AuthViewModel to update UI
+                                    viewModel.refreshNurtraUser()
+                                    Log.d("MainActivity", "Overcome count incremented to: $it")
+                                }.onFailure { error ->
+                                    Log.e("MainActivity", "Failed to increment overcome count: ${error.message}", error)
+                                }
+                            }
+                        }
+                        currentScreen = Screen.Timer
+                    },
                     onBinged = {
                         timerViewModel.pauseStopwatch()
                         currentScreen = Screen.Survey
@@ -253,9 +271,12 @@ fun formatTime(millis: Long): String {
 @Composable
 fun TimerScreen(
     timerViewModel: TimerViewModel,
+    authViewModel: AuthViewModel,
     onNavigateToCamera: () -> Unit
 ) {
     val uiState by timerViewModel.uiState.collectAsState()
+    val authUiState by authViewModel.uiState.collectAsState()
+    val overcomeCount = authUiState.nurtraUser?.overcomeCount ?: 0
     
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -268,6 +289,35 @@ fun TimerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Overcome Count Display
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Times Overcome",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = "$overcomeCount",
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+            
             // Timer Display
             Text(
                 text = formatTime(uiState.elapsedTimeInMillis),

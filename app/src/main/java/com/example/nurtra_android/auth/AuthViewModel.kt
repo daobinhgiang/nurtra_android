@@ -170,5 +170,16 @@ class AuthViewModel : ViewModel() {
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }
+    
+    /**
+     * Refreshes the NurtraUser data from Firestore
+     * This should be called after operations that update user data in Firestore
+     */
+    fun refreshNurtraUser() {
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            loadNurtraUser(currentUser.uid)
+        }
+    }
 }
 

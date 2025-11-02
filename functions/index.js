@@ -1,5 +1,11 @@
+// Load environment variables from .env file for local development
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
+}
+
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const OpenAI = require("openai");
 
@@ -14,11 +20,13 @@ let openai = null;
  */
 function getOpenAIClient() {
   if (!openai) {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const config = functions.config();
+    const apiKey = config?.openai?.key || process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       throw new Error(
           "OpenAI API key not configured. Please set " +
+          "functions.config().openai.key or " +
           "OPENAI_API_KEY environment variable.",
       );
     }
@@ -603,7 +611,7 @@ exports.sendNoonNotifications = onSchedule({
  * Runs daily at 6:00 PM Eastern Time (America/New_York timezone)
  */
 exports.sendNightNotifications = onSchedule({
-  schedule: "23 00 * * *",
+  schedule: "00 18 * * *",
   timeZone: "America/New_York",
 }, async (event) => {
   console.log("🌙 Starting evening notification batch (6pm EST)");

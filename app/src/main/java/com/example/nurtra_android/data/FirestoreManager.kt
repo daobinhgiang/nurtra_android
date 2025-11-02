@@ -3,6 +3,7 @@ package com.example.nurtra_android.data
 import android.util.Log
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
@@ -228,6 +229,30 @@ class FirestoreManager {
         Result.success(Unit)
     } catch (e: Exception) {
         Log.e(TAG, "Error updating FCM token: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Increments the overcomeCount for a user atomically
+     * Uses FieldValue.increment() for thread-safe atomic increment operations
+     */
+    suspend fun incrementOvercomeCount(userId: String): Result<Int> = try {
+        val userRef = db.collection(USERS_COLLECTION).document(userId)
+        
+        // Use FieldValue.increment() for atomic increment
+        userRef.update(
+            "overcomeCount", FieldValue.increment(1),
+            "updatedAt", Timestamp.now()
+        ).await()
+
+        // Fetch the updated count to return it
+        val snapshot = userRef.get().await()
+        val newCount = (snapshot.get("overcomeCount") as? Number)?.toInt() ?: 0
+
+        Log.d(TAG, "Overcome count incremented for user: $userId, new count: $newCount")
+        Result.success(newCount)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error incrementing overcome count: ${e.message}", e)
         Result.failure(e)
     }
 
