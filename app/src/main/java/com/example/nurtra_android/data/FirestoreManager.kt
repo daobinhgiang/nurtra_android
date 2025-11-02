@@ -27,6 +27,7 @@ class FirestoreManager {
     /**
      * Creates or updates a user document in Firestore after authentication
      * This should be called after successful sign up or sign in
+     * Uses merge to preserve existing fields like onboardingCompleted
      */
     suspend fun createOrUpdateUser(
         userId: String,
@@ -43,18 +44,23 @@ class FirestoreManager {
             "platform" to platform
         )
 
+        // Use merge: true to preserve existing fields like onboardingCompleted
         db.collection(USERS_COLLECTION)
             .document(userId)
-            .set(userData)
+            .set(userData, com.google.firebase.firestore.SetOptions.merge())
             .await()
 
         Log.d(TAG, "User document created/updated: $userId")
-        val nurtraUser = NurtraUser(
+        
+        // Fetch the complete user data after merge to return accurate state
+        val getUserResult = getUser(userId)
+        val nurtraUser = getUserResult.getOrNull() ?: NurtraUser(
             email = email,
             name = name,
             updatedAt = now,
             platform = platform
         )
+        
         Result.success(nurtraUser)
     } catch (e: Exception) {
         Log.e(TAG, "Error creating/updating user: ${e.message}", e)

@@ -99,6 +99,9 @@ class AuthViewModel : ViewModel() {
                     } else {
                         Log.w(TAG, "FCM token not available during sign-in")
                     }
+                    
+                    // Reload user data to get latest onboarding status
+                    loadNurtraUser(firebaseUser.uid)
                 }
                 
                 _uiState.value = _uiState.value.copy(isLoading = false)
@@ -133,6 +136,9 @@ class AuthViewModel : ViewModel() {
                     } else {
                         Log.w(TAG, "FCM token not available during sign-up")
                     }
+                    
+                    // Reload user data to get latest onboarding status
+                    loadNurtraUser(firebaseUser.uid)
                 }
                 
                 _uiState.value = _uiState.value.copy(isLoading = false)
@@ -167,6 +173,9 @@ class AuthViewModel : ViewModel() {
                     } else {
                         Log.w(TAG, "FCM token not available during Google sign-in")
                     }
+                    
+                    // Reload user data to get latest onboarding status
+                    loadNurtraUser(firebaseUser.uid)
                 }
                 
                 _uiState.value = _uiState.value.copy(isLoading = false)
