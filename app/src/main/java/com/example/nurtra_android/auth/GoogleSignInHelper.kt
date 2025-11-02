@@ -43,10 +43,14 @@ object GoogleSignInHelper {
             Log.d(TAG, "Starting Google Sign-In flow")
             
             // Create GetGoogleIdOption to request Google ID token
+            // setFilterByAuthorizedAccounts(false) shows ALL Google accounts on device
+            // setAutoSelectEnabled(false) prevents auto-selection, always showing the picker
+            // The account picker automatically includes an "Add account" / "Use another account" option
+            // allowing users to sign in with accounts not currently on the device
             val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)  // Allow any Google account
+                .setFilterByAuthorizedAccounts(false)  // Show all Google accounts, not just authorized
                 .setServerClientId(WEB_CLIENT_ID)
-                .setAutoSelectEnabled(false)  // Always show account picker
+                .setAutoSelectEnabled(false)  // Always show account picker, never auto-select
                 .build()
             
             // Build credential request with the Google ID option

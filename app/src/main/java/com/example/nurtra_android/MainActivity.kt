@@ -7,9 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.*
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,11 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nurtra_android.auth.AuthViewModel
@@ -44,10 +39,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import java.util.Locale
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 class MainActivity : ComponentActivity() {
 
@@ -99,6 +91,9 @@ class MainActivity : ComponentActivity() {
 fun AppContent() {
     val auth = FirebaseAuth.getInstance()
     val context = LocalContext.current
+    val authViewModel: AuthViewModel = viewModel()
+    val authUiState by authViewModel.uiState.collectAsState()
+    
     var currentUser by remember { mutableStateOf(auth.currentUser) }
     var showSignUp by remember { mutableStateOf(false) }
     var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
@@ -155,8 +150,42 @@ fun AppContent() {
             }
         }
         else -> {
-            // Authenticated - show main app
-            HomeScreen()
+            // Authenticated - check onboarding status
+            // Show loading while checking onboarding status
+            if (!authUiState.isInitialLoadComplete) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Loading...",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            } else {
+                // Check if onboarding is completed
+                val onboardingCompleted = authUiState.nurtraUser?.onboardingCompleted ?: false
+                
+                if (onboardingCompleted) {
+                    // Onboarding completed - show main app
+                    HomeScreen()
+                } else {
+                    // Onboarding not completed - show survey
+                    OnboardingSurveyScreen(
+                        onComplete = {
+                            // After completing onboarding, refresh user data
+                            authViewModel.refreshNurtraUser()
+                        },
+                        authViewModel = authViewModel
+                    )
+                }
+            }
         }
     }
 }
@@ -389,261 +418,6 @@ fun TimerScreen(
     }
 }
 
-// Motivational quotes list
-val motivationalQuotes = listOf(
-    "You are stronger than your cravings.",
-    "Every moment you resist is a victory.",
-    "Take a deep breath. You've got this.",
-    "Progress, not perfection.",
-    "Your future self will thank you.",
-    "This feeling will pass. Stay strong.",
-    "You are capable of amazing things.",
-    "One moment at a time.",
-    "You've overcome challenges before. You can do it again.",
-    "Be kind to yourself. You're doing great."
-)
-
-suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
-    ProcessCameraProvider.getInstance(this).also { future ->
-        future.addListener(
-            {
-                continuation.resume(future.get())
-            },
-            ContextCompat.getMainExecutor(this)
-        )
-    }
-}
-
-@Composable
-fun CameraScreen(
-    timerViewModel: TimerViewModel,
-    onNavigateBack: () -> Unit,
-    onOvercome: () -> Unit,
-    onBinged: () -> Unit
-) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val uiState by timerViewModel.uiState.collectAsState()
-    
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            androidx.core.content.ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        )
-    }
-    
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted: Boolean ->
-        hasCameraPermission = granted
-    }
-    
-    var currentQuoteIndex by remember { mutableStateOf(0) }
-    
-    // Rotate quotes every 5 seconds
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(5000)
-            currentQuoteIndex = (currentQuoteIndex + 1) % motivationalQuotes.size
-        }
-    }
-    
-    LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            launcher.launch(Manifest.permission.CAMERA)
-        }
-    }
-    
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (hasCameraPermission) {
-            // Camera Preview
-            CameraPreviewView(
-                modifier = Modifier.fillMaxSize(),
-                lifecycleOwner = lifecycleOwner
-            )
-        } else {
-            // Show message if permission not granted
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = Color.Black
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "Camera permission is required",
-                        color = Color.White,
-                        fontSize = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) {
-                        Text("Grant Permission")
-                    }
-                }
-            }
-        }
-        
-        // Back button
-        IconButton(
-            onClick = onNavigateBack,
-            modifier = Modifier
-                .padding(16.dp)
-                .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = Color.White
-            )
-        }
-        
-        // Timer overlay at top
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 64.dp)
-                .background(
-                    Color.Black.copy(alpha = 0.6f),
-                    MaterialTheme.shapes.medium
-                ),
-            color = Color.Transparent
-        ) {
-            Text(
-                text = formatTime(uiState.elapsedTimeInMillis),
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Green,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-            )
-        }
-        
-        // Motivational quote overlay at bottom
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = 32.dp, end = 32.dp, bottom = 160.dp)
-                .background(
-                    Color.Black.copy(alpha = 0.7f),
-                    MaterialTheme.shapes.large
-                ),
-            color = Color.Transparent
-        ) {
-            Text(
-                text = motivationalQuotes[currentQuoteIndex],
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(20.dp),
-                lineHeight = 24.sp
-            )
-        }
-        
-        // Action buttons at bottom
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // "I just binged" button (red)
-            Button(
-                onClick = onBinged,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFDC3545) // Red
-                )
-            ) {
-                Text(
-                    text = "I just binged",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            
-            // "I overcame it" button (blue)
-            Button(
-                onClick = onOvercome,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF007BFF) // Blue
-                )
-            ) {
-                Text(
-                    text = "I overcame it",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CameraPreviewView(
-    modifier: Modifier = Modifier,
-    lifecycleOwner: androidx.lifecycle.LifecycleOwner
-) {
-    val context = LocalContext.current
-    val previewView = remember { PreviewView(context) }
-    val imageCapture = remember { ImageCapture.Builder().build() }
-    val cameraProviderState = remember { mutableStateOf<ProcessCameraProvider?>(null) }
-    
-    LaunchedEffect(previewView, lifecycleOwner) {
-        try {
-            val cameraProvider = context.getCameraProvider()
-            cameraProviderState.value = cameraProvider
-            
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
-            }
-            
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-            
-            cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
-                lifecycleOwner,
-                cameraSelector,
-                preview,
-                imageCapture
-            )
-        } catch (e: Exception) {
-            // Handle camera binding error
-        }
-    }
-    
-    DisposableEffect(Unit) {
-        onDispose {
-            // Clean up camera when composable is disposed
-            try {
-                cameraProviderState.value?.unbindAll()
-                cameraProviderState.value = null
-            } catch (e: Exception) {
-                // Handle cleanup error
-            }
-        }
-    }
-    
-    AndroidView(
-        factory = { previewView },
-        modifier = modifier
-    )
-}
 
 // Survey emotion options
 val surveyEmotions = listOf(

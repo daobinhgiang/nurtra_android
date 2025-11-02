@@ -35,13 +35,13 @@ fun LoginScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
-    // Launcher for adding Google account
+    // Launcher for adding Google account (only used when no Google accounts exist on device)
     val addAccountLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { _ ->
-        // After adding account, show message to try again
+        // After adding account, prompt user to try signing in again
         showAddAccountDialog = false
-        errorMessage = "Account added! Please click 'Sign in with Google' again to continue."
+        errorMessage = "Account added! Please click 'Sign in with Google' again."
     }
     
     LaunchedEffect(viewModel.uiState.value.errorMessage) {
@@ -194,11 +194,11 @@ fun LoginScreen(
                                 errorMessage = result.message
                             }
                             is GoogleSignInResult.NoAccountsFound -> {
-                                // Show dialog to add account
+                                // No Google accounts on device - show dialog to add one
                                 addAccountIntent = result.addAccountIntent
                                 showAddAccountDialog = true
                             }
-                            is GoogleSignInResult.Cancelled -> {
+                            GoogleSignInResult.Cancelled -> {
                                 // User cancelled, don't show error
                                 errorMessage = null
                             }
@@ -213,13 +213,15 @@ fun LoginScreen(
                 Text("Sign in with Google")
             }
             
-            // Add account dialog
+            // Add account dialog (only shown if no Google accounts exist on device)
             if (showAddAccountDialog) {
                 addAccountIntent?.let { intent ->
                     AlertDialog(
                         onDismissRequest = { showAddAccountDialog = false },
                         title = { Text("No Google Account Found") },
-                        text = { Text("You need a Google account to sign in. Would you like to add one now?") },
+                        text = { 
+                            Text("You need a Google account on your device to sign in. Would you like to add one now?") 
+                        },
                         confirmButton = {
                             TextButton(
                                 onClick = {
