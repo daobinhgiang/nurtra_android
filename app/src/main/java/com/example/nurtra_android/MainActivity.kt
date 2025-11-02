@@ -204,6 +204,8 @@ fun HomeScreen() {
                     timerViewModel = timerViewModel,
                     onNavigateBack = { currentScreen = Screen.Timer },
                     onOvercome = {
+                        // Timer continues running - user overcame the craving!
+                    
                         // Increment overcomeCount in Firestore
                         val currentUser = FirebaseAuth.getInstance().currentUser
                         if (currentUser != null) {
@@ -221,7 +223,8 @@ fun HomeScreen() {
                         currentScreen = Screen.Timer
                     },
                     onBinged = {
-                        timerViewModel.pauseStopwatch()
+                        // Stop the timer when user binged - they need to start over
+                        timerViewModel.stopStopwatch()
                         currentScreen = Screen.Survey
                     }
                 )
@@ -278,17 +281,39 @@ fun TimerScreen(
     val authUiState by authViewModel.uiState.collectAsState()
     val overcomeCount = authUiState.nurtraUser?.overcomeCount ?: 0
     
+    // Show loading indicator until both Firebase fetches are complete
+    val isDataReady = uiState.isInitialLoadComplete && authUiState.isInitialLoadComplete
+    
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
+        if (!isDataReady) {
+            // Show loading indicator while waiting for Firebase data
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Loading...",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        } else {
+            // Show actual content once data is loaded
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
             // Overcome Count Display
             Card(
                 modifier = Modifier
@@ -347,15 +372,18 @@ fun TimerScreen(
                     containerColor = if (uiState.isTimerRunning) {
                         MaterialTheme.colorScheme.primary
                     } else {
-                        MaterialTheme.colorScheme.secondary
-                    }
+                        Color(0xFF4CAF50) // Vibrant green to make it stand out
+                    },
+                    contentColor = Color.White
                 )
             ) {
                 Text(
                     text = if (uiState.isTimerRunning) "I'm Craving!" else "Start Urge timer",
                     fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
+            }
             }
         }
     }

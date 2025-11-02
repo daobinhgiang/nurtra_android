@@ -19,7 +19,8 @@ data class AuthUiState(
     val isLoading: Boolean = false,
     val user: FirebaseUser? = null,
     val nurtraUser: NurtraUser? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isInitialLoadComplete: Boolean = false
 )
 
 class AuthViewModel : ViewModel() {
@@ -41,8 +42,19 @@ class AuthViewModel : ViewModel() {
             if (currentUser != null) {
                 loadNurtraUser(currentUser.uid)
             } else {
-                _uiState.value = _uiState.value.copy(nurtraUser = null)
+                _uiState.value = _uiState.value.copy(
+                    nurtraUser = null,
+                    isInitialLoadComplete = true
+                )
             }
+        }
+        
+        // Handle initial state if user is already authenticated
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            loadNurtraUser(currentUser.uid)
+        } else {
+            _uiState.value = _uiState.value.copy(isInitialLoadComplete = true)
         }
     }
     
@@ -50,11 +62,15 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             val result = firestoreManager.getUser(userId)
             result.onSuccess { nurtraUser ->
-                _uiState.value = _uiState.value.copy(nurtraUser = nurtraUser)
+                _uiState.value = _uiState.value.copy(
+                    nurtraUser = nurtraUser,
+                    isInitialLoadComplete = true
+                )
             }.onFailure { error ->
                 // Log error but don't fail - user may not have Firestore document yet
                 _uiState.value = _uiState.value.copy(
-                    errorMessage = "Could not load user profile: ${error.message}"
+                    errorMessage = "Could not load user profile: ${error.message}",
+                    isInitialLoadComplete = true
                 )
             }
         }
@@ -178,7 +194,17 @@ class AuthViewModel : ViewModel() {
     fun refreshNurtraUser() {
         val currentUser = auth.currentUser
         if (currentUser != null) {
-            loadNurtraUser(currentUser.uid)
+            viewModelScope.launch {
+                val result = firestoreManager.getUser(currentUser.uid)
+                result.onSuccess { nurtraUser ->
+                    _uiState.value = _uiState.value.copy(nurtraUser = nurtraUser)
+                }.onFailure { error ->
+                    // Log error but don't fail - user may not have Firestore document yet
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "Could not load user profile: ${error.message}"
+                    )
+                }
+            }
         }
     }
 }

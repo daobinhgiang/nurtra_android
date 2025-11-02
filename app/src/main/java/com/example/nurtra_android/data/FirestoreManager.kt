@@ -257,6 +257,77 @@ class FirestoreManager {
     }
 
     /**
+     * Starts the timer by saving start time to Firebase
+     */
+    suspend fun startTimer(userId: String): Result<Timestamp> = try {
+        val now = Timestamp.now()
+        val updateData: Map<String, Any> = mapOf(
+            "timerIsRunning" to true,
+            "timerStartTime" to now,
+            "timerLastUpdated" to now,
+            "updatedAt" to now
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Timer started for user: $userId at $now")
+        Result.success(now)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error starting timer: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Stops the timer by updating Firebase
+     */
+    suspend fun stopTimer(userId: String): Result<Unit> = try {
+        val now = Timestamp.now()
+        val updateData: Map<String, Any> = mapOf(
+            "timerIsRunning" to false,
+            "timerLastUpdated" to now,
+            "updatedAt" to now
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Timer stopped for user: $userId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error stopping timer: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Resets the timer by clearing timer fields
+     */
+    suspend fun resetTimer(userId: String): Result<Unit> = try {
+        val now = Timestamp.now()
+        val updateData: Map<String, Any?> = mapOf(
+            "timerIsRunning" to false,
+            "timerStartTime" to null,
+            "timerLastUpdated" to now,
+            "updatedAt" to now
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Timer reset for user: $userId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error resetting timer: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
      * Deletes user data from Firestore
      */
     suspend fun deleteUser(userId: String): Result<Unit> = try {
