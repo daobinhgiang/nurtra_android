@@ -18,7 +18,11 @@ class FCMTokenManager {
      */
     suspend fun getToken(): String? = try {
         val token = messaging.token.await()
-        Log.d(TAG, "FCM Token retrieved: ${token.take(10)}...")
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "FCM Token Retrieved Successfully")
+        Log.d(TAG, "Full Token: $token")
+        Log.d(TAG, "Token Length: ${token.length} characters")
+        Log.d(TAG, "==========================================")
         token
     } catch (e: Exception) {
         Log.e(TAG, "Error retrieving FCM token: ${e.message}", e)

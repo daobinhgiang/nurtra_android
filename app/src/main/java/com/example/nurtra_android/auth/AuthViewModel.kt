@@ -1,5 +1,6 @@
 package com.example.nurtra_android.auth
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
@@ -22,6 +23,7 @@ data class AuthUiState(
 )
 
 class AuthViewModel : ViewModel() {
+    private val TAG = "AuthViewModel"
     private val auth = FirebaseAuth.getInstance()
     private val firestoreManager = FirestoreManager()
     private val fcmTokenManager = FCMTokenManager()
@@ -76,7 +78,10 @@ class AuthViewModel : ViewModel() {
                     // Get and save FCM token
                     val fcmToken = fcmTokenManager.getToken()
                     if (fcmToken != null) {
+                        Log.d(TAG, "Saving FCM token to Firestore after sign-in")
                         firestoreManager.updateFCMToken(firebaseUser.uid, fcmToken)
+                    } else {
+                        Log.w(TAG, "FCM token not available during sign-in")
                     }
                 }
                 
@@ -107,7 +112,10 @@ class AuthViewModel : ViewModel() {
                     // Get and save FCM token
                     val fcmToken = fcmTokenManager.getToken()
                     if (fcmToken != null) {
+                        Log.d(TAG, "Saving FCM token to Firestore after sign-up")
                         firestoreManager.updateFCMToken(firebaseUser.uid, fcmToken)
+                    } else {
+                        Log.w(TAG, "FCM token not available during sign-up")
                     }
                 }
                 
@@ -138,7 +146,10 @@ class AuthViewModel : ViewModel() {
                     // Get and save FCM token
                     val fcmToken = fcmTokenManager.getToken()
                     if (fcmToken != null) {
+                        Log.d(TAG, "Saving FCM token to Firestore after Google sign-in")
                         firestoreManager.updateFCMToken(firebaseUser.uid, fcmToken)
+                    } else {
+                        Log.w(TAG, "FCM token not available during Google sign-in")
                     }
                 }
                 

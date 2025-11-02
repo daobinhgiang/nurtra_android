@@ -25,14 +25,20 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
      */
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "New FCM token: ${token.take(10)}...")
+        Log.d(TAG, "==========================================")
+        Log.d(TAG, "NEW FCM TOKEN GENERATED")
+        Log.d(TAG, "Full Token: $token")
+        Log.d(TAG, "Token Length: ${token.length} characters")
+        Log.d(TAG, "==========================================")
         
         // Save the token to Firestore for the current user
         val currentUser = auth.currentUser
         if (currentUser != null) {
+            Log.d(TAG, "Saving token for user: ${currentUser.uid}")
             saveTokenToFirestore(currentUser.uid, token)
         } else {
             Log.w(TAG, "No authenticated user to save FCM token")
+            Log.w(TAG, "Token will be saved after user logs in")
         }
     }
 
@@ -43,15 +49,46 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         Log.d(TAG, "Message received: ${message.messageId}")
         
-        // Handle the message (you can display a notification, etc.)
-        // For now, we'll just log it
+        // Log message data for debugging
         if (message.data.isNotEmpty()) {
             Log.d(TAG, "Message data: ${message.data}")
         }
         
-        message.notification?.let {
-            Log.d(TAG, "Message title: ${it.title}")
-            Log.d(TAG, "Message body: ${it.body}")
+        // Display notification
+        message.notification?.let { notification ->
+            Log.d(TAG, "Message title: ${notification.title}")
+            Log.d(TAG, "Message body: ${notification.body}")
+            
+            // Create notification helper and display the notification
+            val notificationHelper = NotificationHelper(applicationContext)
+            val title = notification.title ?: "Nurtra"
+            val body = notification.body ?: ""
+            
+            // Display notification based on type
+            when (message.data["type"]) {
+                "motivational" -> {
+                    notificationHelper.showMotivationalNotification(title, body, message.data)
+                }
+                else -> {
+                    notificationHelper.showGeneralNotification(title, body)
+                }
+            }
+        } ?: run {
+            // Handle data-only message (no notification payload)
+            if (message.data.isNotEmpty()) {
+                val notificationHelper = NotificationHelper(applicationContext)
+                val title = message.data["title"] ?: "Nurtra"
+                val body = message.data["body"] ?: "You have a new message"
+                
+                when (message.data["type"]) {
+                    "motivational" -> {
+                        notificationHelper.showMotivationalNotification(title, body, message.data)
+                    }
+                    else -> {
+                        notificationHelper.showGeneralNotification(title, body)
+                    }
+                }
+            }
         }
     }
 

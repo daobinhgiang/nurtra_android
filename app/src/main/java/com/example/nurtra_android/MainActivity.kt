@@ -34,8 +34,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nurtra_android.auth.AuthViewModel
 import com.example.nurtra_android.auth.LoginScreen
 import com.example.nurtra_android.auth.SignUpScreen
+import com.example.nurtra_android.data.NotificationHelper
+import com.example.nurtra_android.data.FCMTokenManager
 import com.example.nurtra_android.theme.NurtraTheme
 import com.google.firebase.auth.FirebaseAuth
+import android.os.Build
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -43,11 +50,45 @@ import kotlin.coroutines.suspendCoroutine
 
 class MainActivity : ComponentActivity() {
 
+    private val TAG = "MainActivity"
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Create notification channels
+        val notificationHelper = NotificationHelper(this)
+        notificationHelper.createNotificationChannels()
+        
+        // Log FCM token on app startup for debugging
+        logFCMToken()
+        
         setContent {
             NurtraTheme {
                 AppContent()
+            }
+        }
+    }
+    
+    /**
+     * Logs the current FCM token for debugging purposes
+     * This helps you verify the token is being generated correctly
+     */
+    private fun logFCMToken() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val fcmTokenManager = FCMTokenManager()
+                val token = fcmTokenManager.getToken()
+                
+                if (token != null) {
+                    Log.i(TAG, "✅ App has valid FCM token")
+                    Log.i(TAG, "Copy this token to test notifications:")
+                    Log.i(TAG, token)
+                } else {
+                    Log.w(TAG, "⚠️ FCM token not available yet")
+                    Log.w(TAG, "Token will be generated shortly and logged when ready")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error logging FCM token: ${e.message}", e)
             }
         }
     }
@@ -56,13 +97,44 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppContent() {
     val auth = FirebaseAuth.getInstance()
+    val context = LocalContext.current
     var currentUser by remember { mutableStateOf(auth.currentUser) }
     var showSignUp by remember { mutableStateOf(false) }
+    var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
+    
+    // Request notification permission for Android 13+ (API 33+)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Permission granted - notifications will work
+        } else {
+            // Permission denied - notifications won't be shown
+            // You could show a dialog explaining the importance of notifications
+        }
+    }
     
     // Listen to auth state changes
     LaunchedEffect(Unit) {
         auth.addAuthStateListener { firebaseAuth ->
             currentUser = firebaseAuth.currentUser
+        }
+    }
+    
+    // Request notification permission when user is authenticated (Android 13+)
+    LaunchedEffect(currentUser) {
+        if (currentUser != null && !hasRequestedNotificationPermission) {
+            hasRequestedNotificationPermission = true
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Check if permission is already granted
+                val permission = Manifest.permission.POST_NOTIFICATIONS
+                if (ContextCompat.checkSelfPermission(context, permission) 
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    // Request permission
+                    notificationPermissionLauncher.launch(permission)
+                }
+            }
         }
     }
     
