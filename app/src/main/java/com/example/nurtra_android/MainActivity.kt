@@ -2,6 +2,7 @@ package com.example.nurtra_android
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +30,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nurtra_android.auth.AuthViewModel
 import com.example.nurtra_android.auth.LoginScreen
 import com.example.nurtra_android.auth.SignUpScreen
+import com.example.nurtra_android.blocking.AppBlockingManager
+import com.example.nurtra_android.blocking.BlockingOverlay
 import com.example.nurtra_android.data.NotificationHelper
 import com.example.nurtra_android.data.FCMTokenManager
 import com.example.nurtra_android.data.FirestoreManager
@@ -44,6 +47,8 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
 
     private val TAG = "MainActivity"
+    private var showBlockingOverlay = mutableStateOf(false)
+    private var blockedAppPackage = mutableStateOf<String?>(null)
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,10 +60,32 @@ class MainActivity : ComponentActivity() {
         // Log FCM token on app startup for debugging
         logFCMToken()
         
+        // Check if we're being launched because of a blocked app
+        checkForBlockedApp(intent)
+        
         setContent {
             NurtraTheme {
-                AppContent()
+                AppContent(
+                    showBlockingOverlay = showBlockingOverlay.value,
+                    blockedAppPackage = blockedAppPackage.value,
+                    onDismissBlockingOverlay = {
+                        showBlockingOverlay.value = false
+                        blockedAppPackage.value = null
+                    }
+                )
             }
+        }
+    }
+    
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        checkForBlockedApp(intent)
+    }
+    
+    private fun checkForBlockedApp(intent: Intent?) {
+        if (intent?.getBooleanExtra("show_blocking_message", false) == true) {
+            showBlockingOverlay.value = true
+            blockedAppPackage.value = intent.getStringExtra("blocked_app")
         }
     }
     
@@ -88,7 +115,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppContent() {
+fun AppContent(
+    showBlockingOverlay: Boolean = false,
+    blockedAppPackage: String? = null,
+    onDismissBlockingOverlay: () -> Unit = {}
+) {
     val auth = FirebaseAuth.getInstance()
     val context = LocalContext.current
     val authViewModel: AuthViewModel = viewModel()
@@ -97,6 +128,34 @@ fun AppContent() {
     var currentUser by remember { mutableStateOf(auth.currentUser) }
     var showSignUp by remember { mutableStateOf(false) }
     var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
+    
+    // Screen state for HomeScreen - needed to navigate to Camera from blocking overlay
+    var homeScreenState by remember { mutableStateOf<Screen?>(null) }
+    
+    // Load blocked apps from Firestore when user logs in
+    LaunchedEffect(currentUser) {
+        if (currentUser != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val firestoreManager = FirestoreManager()
+                    val userResult = firestoreManager.getUser(currentUser!!.uid)
+                    
+                    userResult.onSuccess { nurtraUser ->
+                        nurtraUser?.let {
+                            // Update AppBlockingManager with the blocked apps
+                            val blockingManager = AppBlockingManager.getInstance(context)
+                            blockingManager.updateBlockedApps(it.blockedApps)
+                            Log.d("MainActivity", "Loaded ${it.blockedApps.size} blocked apps from Firestore")
+                        }
+                    }.onFailure { error ->
+                        Log.e("MainActivity", "Error loading blocked apps: ${error.message}", error)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Exception loading blocked apps: ${e.message}", e)
+                }
+            }
+        }
+    }
     
     // Request notification permission for Android 13+ (API 33+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -134,56 +193,76 @@ fun AppContent() {
         }
     }
     
-    when {
-        currentUser == null -> {
-            // Not authenticated - show login or sign up
-            if (showSignUp) {
-                SignUpScreen(
-                    onNavigateToLogin = { showSignUp = false },
-                    onSignUpSuccess = { showSignUp = false }
-                )
-            } else {
-                LoginScreen(
-                    onNavigateToSignUp = { showSignUp = true },
-                    onLoginSuccess = { }
-                )
+    // Show blocking overlay if needed
+    if (showBlockingOverlay) {
+        val blockingManager = AppBlockingManager.getInstance(context)
+        BlockingOverlay(
+            blockedAppName = blockedAppPackage,
+            onDismiss = {
+                // Dismiss the overlay
+                onDismissBlockingOverlay()
+                // If blocking is still active (user is in craving session), navigate to Camera screen
+                if (blockingManager.isBlockingActive()) {
+                    homeScreenState = Screen.Camera
+                }
             }
-        }
-        else -> {
-            // Authenticated - check onboarding status
-            // Show loading while checking onboarding status
-            if (!authUiState.isInitialLoadComplete) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator()
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Loading...",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onBackground
+        )
+    } else {
+        // Normal app flow
+        when {
+            currentUser == null -> {
+                // Not authenticated - show login or sign up
+                if (showSignUp) {
+                    SignUpScreen(
+                        onNavigateToLogin = { showSignUp = false },
+                        onSignUpSuccess = { showSignUp = false }
+                    )
+                } else {
+                    LoginScreen(
+                        onNavigateToSignUp = { showSignUp = true },
+                        onLoginSuccess = { }
                     )
                 }
-            } else {
-                // Check if onboarding is completed
-                val onboardingCompleted = authUiState.nurtraUser?.onboardingCompleted ?: false
-                
-                if (onboardingCompleted) {
-                    // Onboarding completed - show main app
-                    HomeScreen()
+            }
+            else -> {
+                // Authenticated - check onboarding status
+                // Show loading while checking onboarding status
+                if (!authUiState.isInitialLoadComplete) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Loading...",
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 } else {
-                    // Onboarding not completed - show survey
-                    OnboardingSurveyScreen(
-                        onComplete = {
-                            // After completing onboarding, refresh user data
-                            authViewModel.refreshNurtraUser()
-                        },
-                        authViewModel = authViewModel
-                    )
+                    // Check if onboarding is completed
+                    val onboardingCompleted = authUiState.nurtraUser?.onboardingCompleted ?: false
+                    
+                    if (onboardingCompleted) {
+                        // Onboarding completed - show main app
+                        HomeScreen(
+                            initialScreen = homeScreenState,
+                            onScreenChanged = { screen -> homeScreenState = screen }
+                        )
+                    } else {
+                        // Onboarding not completed - show survey
+                        OnboardingSurveyScreen(
+                            onComplete = {
+                                // After completing onboarding, refresh user data
+                                authViewModel.refreshNurtraUser()
+                            },
+                            authViewModel = authViewModel
+                        )
+                    }
                 }
             }
         }
@@ -198,11 +277,27 @@ sealed class Screen {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(
+    initialScreen: Screen? = null,
+    onScreenChanged: (Screen) -> Unit = {}
+) {
+    val context = LocalContext.current
     val viewModel: AuthViewModel = viewModel()
     val timerViewModel: TimerViewModel = viewModel()
     var showLogoutDialog by remember { mutableStateOf(false) }
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Timer) }
+    var currentScreen by remember { 
+        mutableStateOf<Screen>(initialScreen ?: Screen.Timer) 
+    }
+    
+    // Sync with parent state
+    LaunchedEffect(currentScreen) {
+        onScreenChanged(currentScreen)
+    }
+    
+    // Update if initialScreen changes from outside (e.g., from blocking overlay)
+    LaunchedEffect(initialScreen) {
+        initialScreen?.let { currentScreen = it }
+    }
     
     Column(
         modifier = Modifier.fillMaxSize()
@@ -231,9 +326,20 @@ fun HomeScreen() {
             is Screen.Camera -> {
                 CameraScreen(
                     timerViewModel = timerViewModel,
-                    onNavigateBack = { currentScreen = Screen.Timer },
+                    onNavigateBack = { 
+                        // Deactivate blocking immediately when navigating back
+                        // This ensures blocking is only active while in CameraScreen
+                        val blockingManager = AppBlockingManager.getInstance(context)
+                        blockingManager.deactivateBlocking()
+                        Log.d("MainActivity", "App blocking deactivated when navigating back")
+                        currentScreen = Screen.Timer 
+                    },
                     onOvercome = {
                         // Timer continues running - user overcame the craving!
+                        // Deactivate blocking IMMEDIATELY so user can access apps normally
+                        val blockingManager = AppBlockingManager.getInstance(context)
+                        blockingManager.deactivateBlocking()
+                        Log.d("MainActivity", "App blocking deactivated - user overcame craving, apps now accessible")
                     
                         // Increment overcomeCount in Firestore
                         val currentUser = FirebaseAuth.getInstance().currentUser
@@ -249,10 +355,15 @@ fun HomeScreen() {
                                 }
                             }
                         }
+                        // Navigate back to timer screen - blocking is already deactivated
                         currentScreen = Screen.Timer
                     },
                     onBinged = {
                         // Stop the timer when user binged - they need to start over
+                        // Deactivate blocking immediately since session is ending
+                        val blockingManager = AppBlockingManager.getInstance(context)
+                        blockingManager.deactivateBlocking()
+                        Log.d("MainActivity", "App blocking deactivated - user binged")
                         timerViewModel.stopStopwatch()
                         currentScreen = Screen.Survey
                     }
@@ -306,6 +417,7 @@ fun TimerScreen(
     authViewModel: AuthViewModel,
     onNavigateToCamera: () -> Unit
 ) {
+    val context = LocalContext.current
     val uiState by timerViewModel.uiState.collectAsState()
     val authUiState by authViewModel.uiState.collectAsState()
     val overcomeCount = authUiState.nurtraUser?.overcomeCount ?: 0
@@ -387,7 +499,11 @@ fun TimerScreen(
             Button(
                 onClick = {
                     if (uiState.isTimerRunning) {
-                        // Timer is running, navigate to camera
+                        // Timer is running, activate blocking immediately and navigate to camera
+                        // Blocking will remain active while user is in CameraScreen
+                        val blockingManager = AppBlockingManager.getInstance(context)
+                        blockingManager.activateBlocking()
+                        Log.d("TimerScreen", "App blocking activated when craving button clicked")
                         onNavigateToCamera()
                     } else {
                         // Start the timer

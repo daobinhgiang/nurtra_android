@@ -21,7 +21,8 @@ data class NurtraUser(
     val platform: String? = null,
     val timerIsRunning: Boolean = false,
     val timerLastUpdated: Timestamp? = null,
-    val timerStartTime: Timestamp? = null
+    val timerStartTime: Timestamp? = null,
+    val blockedApps: List<String> = emptyList()
 ) {
     companion object {
         fun fromMap(map: Map<String, Any>): NurtraUser {
@@ -41,7 +42,8 @@ data class NurtraUser(
                 platform = map["platform"] as? String,
                 timerIsRunning = map["timerIsRunning"] as? Boolean ?: false,
                 timerLastUpdated = map["timerLastUpdated"] as? Timestamp,
-                timerStartTime = map["timerStartTime"] as? Timestamp
+                timerStartTime = map["timerStartTime"] as? Timestamp,
+                blockedApps = (map["blockedApps"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
             )
         }
     }
@@ -61,7 +63,8 @@ data class NurtraUser(
             "platform" to platform,
             "timerIsRunning" to timerIsRunning,
             "timerLastUpdated" to timerLastUpdated,
-            "timerStartTime" to timerStartTime
+            "timerStartTime" to timerStartTime,
+            "blockedApps" to blockedApps
         )
     }
 }

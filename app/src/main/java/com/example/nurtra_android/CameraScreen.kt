@@ -2,6 +2,7 @@ package com.example.nurtra_android
 
 import android.Manifest
 import android.content.Context
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
@@ -10,7 +11,6 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,7 +24,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.example.nurtra_android.blocking.AccessibilityServiceHelper
+import com.example.nurtra_android.blocking.AccessibilityServicePermissionDialog
+import com.example.nurtra_android.blocking.AppBlockingManager
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -80,6 +89,57 @@ fun CameraScreen(
     }
     
     var currentQuoteIndex by remember { mutableStateOf(0) }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+    
+    // Function to check and activate blocking
+    val checkAndActivateBlocking: () -> Unit = {
+        val isEnabled = AccessibilityServiceHelper.isAccessibilityServiceEnabled(context)
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        
+        if (!isEnabled && !showAccessibilityDialog) {
+            // Show dialog if not already showing
+            showAccessibilityDialog = true
+        } else if (isEnabled && currentUser != null) {
+            // Activate blocking if service is enabled
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val blockingManager = AppBlockingManager.getInstance(context)
+                    blockingManager.activateBlocking()
+                    Log.d("CameraScreen", "App blocking activated")
+                } catch (e: Exception) {
+                    Log.e("CameraScreen", "Error activating app blocking: ${e.message}", e)
+                }
+            }
+        }
+    }
+    
+    // Check when screen first appears
+    LaunchedEffect(Unit) {
+        delay(300) // Small delay to let screen render first
+        checkAndActivateBlocking()
+    }
+    
+    // Re-check when activity resumes (e.g., user returns from settings)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                checkAndActivateBlocking()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
+    // Deactivate blocking when leaving CameraScreen
+    DisposableEffect(Unit) {
+        onDispose {
+            val blockingManager = AppBlockingManager.getInstance(context)
+            blockingManager.deactivateBlocking()
+            Log.d("CameraScreen", "App blocking deactivated")
+        }
+    }
     
     // Rotate quotes every 5 seconds
     LaunchedEffect(Unit) {
@@ -93,6 +153,23 @@ fun CameraScreen(
         if (!hasCameraPermission) {
             launcher.launch(Manifest.permission.CAMERA)
         }
+    }
+    
+    // Show accessibility service permission dialog
+    if (showAccessibilityDialog) {
+        AccessibilityServicePermissionDialog(
+            onDismiss = { 
+                showAccessibilityDialog = false
+                // Re-check after dismissing (in case user enabled it manually)
+                checkAndActivateBlocking()
+            },
+            onOpenSettings = {
+                AccessibilityServiceHelper.openAccessibilitySettings(context)
+                // Keep dialog hidden - will check again on resume
+                showAccessibilityDialog = false
+            },
+            serviceName = AccessibilityServiceHelper.getServiceName(context)
+        )
     }
     
     Box(modifier = Modifier.fillMaxSize()) {
@@ -126,20 +203,6 @@ fun CameraScreen(
                     }
                 }
             }
-        }
-        
-        // Back button
-        IconButton(
-            onClick = onNavigateBack,
-            modifier = Modifier
-                .padding(16.dp)
-                .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = Color.White
-            )
         }
         
         // Timer overlay at top

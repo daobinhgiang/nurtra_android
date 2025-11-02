@@ -3,4 +3,5 @@
     <string name="start">Start</string>
     <string name="pause">Pause</string>
     <string name="reset">Reset</string>
+    <string name="accessibility_service_description">Nurtra uses this service to help you stay focused during cravings by blocking distracting apps. This service only activates when you\'re using the \'Craving!\' feature.</string>
 </resources>

@@ -7,6 +7,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,10 +16,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nurtra_android.auth.AuthViewModel
+import com.example.nurtra_android.blocking.AccessibilityServiceHelper
+import com.example.nurtra_android.blocking.AccessibilityServicePermissionDialog
+import com.example.nurtra_android.blocking.AppSelectionScreen
 import com.example.nurtra_android.data.FirestoreManager
 import com.example.nurtra_android.data.OnboardingSurveyResponses
 import com.google.firebase.Timestamp
@@ -26,6 +36,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.util.Log
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.CheckCircle
 
 // Survey question data
 data class SurveyStep(
@@ -35,7 +47,8 @@ data class SurveyStep(
     val options: List<String>,
     val isMultipleChoice: Boolean,
     val isInformational: Boolean = false,
-    val informationalContent: String? = null
+    val informationalContent: String? = null,
+    val isAppSelection: Boolean = false
 )
 
 // Survey steps configuration
@@ -186,21 +199,15 @@ private val surveySteps = listOf(
             This feature helps you stay focused and avoid distractions when you're working through a craving.
         """.trimIndent()
     ),
-    // Step 9: Select Apps to Block (Placeholder for future implementation)
+    // Step 9: Select Apps to Block
     SurveyStep(
         stepNumber = 9,
         title = "Select Apps to Block",
-        question = "",
+        question = "Choose apps to block during cravings",
         options = emptyList(),
         isMultipleChoice = false,
-        isInformational = true,
-        informationalContent = """
-            App Selection
-            
-            You can select which apps to block when using the 'Craving!' feature.
-            
-            This feature will be available in a future update.
-        """.trimIndent()
+        isInformational = false,
+        isAppSelection = true
     )
 )
 
@@ -210,11 +217,17 @@ fun OnboardingSurveyScreen(
     onComplete: () -> Unit,
     authViewModel: AuthViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     var currentStep by remember { mutableStateOf(0) }
     var responses by remember { mutableStateOf<Map<Int, Set<String>>>(emptyMap()) }
     var otherTexts by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var selectedApps by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isSubmitting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var isAccessibilityEnabled by remember { 
+        mutableStateOf(AccessibilityServiceHelper.isAccessibilityServiceEnabled(context)) 
+    }
 
     val currentStepData = surveySteps[currentStep]
     val progress = (currentStep + 1) / surveySteps.size.toFloat()
@@ -226,12 +239,43 @@ fun OnboardingSurveyScreen(
     // Check if can proceed to next step
     val canProceed = when {
         currentStepData.isInformational -> true
+        currentStepData.isAppSelection -> true // App selection is optional
         currentStepData.isMultipleChoice -> currentResponses.isNotEmpty() && 
             !(currentResponses.contains("Other") && currentOtherText.isBlank())
         else -> currentResponses.isNotEmpty() && 
             !(currentResponses.contains("Other") && currentOtherText.isBlank())
     }
 
+    // Show accessibility service permission dialog
+    if (showAccessibilityDialog) {
+        AccessibilityServicePermissionDialog(
+            onDismiss = { 
+                showAccessibilityDialog = false
+                // Re-check after dismissing
+                isAccessibilityEnabled = AccessibilityServiceHelper.isAccessibilityServiceEnabled(context)
+            },
+            onOpenSettings = {
+                AccessibilityServiceHelper.openAccessibilitySettings(context)
+                showAccessibilityDialog = false
+            },
+            serviceName = AccessibilityServiceHelper.getServiceName(context)
+        )
+    }
+    
+    // Re-check accessibility status when resuming from settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isAccessibilityEnabled = AccessibilityServiceHelper.isAccessibilityServiceEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -289,6 +333,101 @@ fun OnboardingSurveyScreen(
                         fontSize = 16.sp,
                         lineHeight = 24.sp,
                         modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else if (currentStepData.isAppSelection) {
+                    // App selection step with accessibility permission prompt
+                    Text(
+                        text = currentStepData.question,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Accessibility Service Permission Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isAccessibilityEnabled) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.errorContainer
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isAccessibilityEnabled) {
+                                    Icons.Default.CheckCircle
+                                } else {
+                                    Icons.Default.Settings
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                                tint = if (isAccessibilityEnabled) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                }
+                            )
+                            
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isAccessibilityEnabled) {
+                                        "Accessibility Service Enabled ✓"
+                                    } else {
+                                        "Enable Accessibility Service"
+                                    },
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAccessibilityEnabled) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onErrorContainer
+                                    }
+                                )
+                                Text(
+                                    text = if (isAccessibilityEnabled) {
+                                        "App blocking is ready to use"
+                                    } else {
+                                        "Required for app blocking to work"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = if (isAccessibilityEnabled) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                                    }
+                                )
+                            }
+                            
+                            if (!isAccessibilityEnabled) {
+                                Button(
+                                    onClick = { showAccessibilityDialog = true },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    )
+                                ) {
+                                    Text("Enable")
+                                }
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Apps list
+                    AppSelectionScreen(
+                        selectedApps = selectedApps,
+                        onSelectionChanged = { selectedApps = it },
+                        modifier = Modifier.weight(1f)
                     )
                 } else {
                     // Question step
@@ -417,6 +556,7 @@ fun OnboardingSurveyScreen(
                                 submitSurvey(
                                     responses = responses,
                                     otherTexts = otherTexts,
+                                    selectedApps = selectedApps.toList(),
                                     authViewModel = authViewModel,
                                     onSuccess = {
                                         onComplete()
@@ -465,6 +605,7 @@ fun OnboardingSurveyScreen(
 private fun submitSurvey(
     responses: Map<Int, Set<String>>,
     otherTexts: Map<Int, String>,
+    selectedApps: List<String>,
     authViewModel: AuthViewModel,
     onSuccess: () -> Unit,
     onError: (String) -> Unit,
@@ -494,18 +635,34 @@ private fun submitSurvey(
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val firestoreManager = FirestoreManager()
-            val result = firestoreManager.updateOnboardingData(
+            
+            // Save onboarding data
+            val onboardingResult = firestoreManager.updateOnboardingData(
                 userId = currentUser.uid,
                 responses = surveyResponses
             )
 
-            result.onSuccess {
-                Log.d("OnboardingSurvey", "Survey submitted successfully")
-                CoroutineScope(Dispatchers.Main).launch {
-                    isLoading(false)
-                    // Refresh user data
-                    authViewModel.refreshNurtraUser()
-                    onSuccess()
+            onboardingResult.onSuccess {
+                // Save blocked apps
+                val blockedAppsResult = firestoreManager.updateBlockedApps(
+                    userId = currentUser.uid,
+                    blockedApps = selectedApps
+                )
+                
+                blockedAppsResult.onSuccess {
+                    Log.d("OnboardingSurvey", "Survey and blocked apps submitted successfully")
+                    CoroutineScope(Dispatchers.Main).launch {
+                        isLoading(false)
+                        // Refresh user data
+                        authViewModel.refreshNurtraUser()
+                        onSuccess()
+                    }
+                }.onFailure { error ->
+                    Log.e("OnboardingSurvey", "Failed to save blocked apps: ${error.message}", error)
+                    CoroutineScope(Dispatchers.Main).launch {
+                        isLoading(false)
+                        onError("Failed to save blocked apps: ${error.message}")
+                    }
                 }
             }.onFailure { error ->
                 Log.e("OnboardingSurvey", "Failed to submit survey: ${error.message}", error)

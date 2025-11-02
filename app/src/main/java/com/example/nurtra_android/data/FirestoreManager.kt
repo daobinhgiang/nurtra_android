@@ -334,6 +334,28 @@ class FirestoreManager {
     }
 
     /**
+     * Updates the list of blocked apps for a user
+     */
+    suspend fun updateBlockedApps(userId: String, blockedApps: List<String>): Result<Unit> = try {
+        val now = Timestamp.now()
+        val updateData: Map<String, Any> = mapOf(
+            "blockedApps" to blockedApps,
+            "updatedAt" to now
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Blocked apps updated for user: $userId, count: ${blockedApps.size}")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error updating blocked apps: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
      * Deletes user data from Firestore
      */
     suspend fun deleteUser(userId: String): Result<Unit> = try {
