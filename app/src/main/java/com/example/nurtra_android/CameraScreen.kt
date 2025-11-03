@@ -29,6 +29,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.example.nurtra_android.blocking.AccessibilityServiceHelper
 import com.example.nurtra_android.blocking.AccessibilityServicePermissionDialog
 import com.example.nurtra_android.blocking.AppBlockingManager
+import com.example.nurtra_android.data.FirestoreManager
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,8 +38,8 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-// Motivational quotes list
-val motivationalQuotes = listOf(
+// Default motivational quotes (fallback if personalized quotes are not available)
+val defaultMotivationalQuotes = listOf(
     "You are stronger than your cravings.",
     "Every moment you resist is a victory.",
     "Take a deep breath. You've got this.",
@@ -89,7 +90,29 @@ fun CameraScreen(
     }
     
     var currentQuoteIndex by remember { mutableStateOf(0) }
+    var motivationalQuotes by remember { mutableStateOf(defaultMotivationalQuotes) }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
+    
+    // Fetch personalized motivational quotes from Firebase
+    LaunchedEffect(Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            val firestoreManager = FirestoreManager()
+            val quotesResult = firestoreManager.getUserMotivationalQuotes(currentUser.uid)
+            
+            quotesResult.onSuccess { quotes ->
+                if (quotes.isNotEmpty()) {
+                    motivationalQuotes = quotes
+                    Log.d("CameraScreen", "Loaded ${quotes.size} personalized quotes")
+                } else {
+                    Log.d("CameraScreen", "No personalized quotes found, using defaults")
+                }
+            }.onFailure { error ->
+                Log.e("CameraScreen", "Failed to load quotes: ${error.message}", error)
+                // Continue with default quotes
+            }
+        }
+    }
     
     // Function to check and activate blocking
     val checkAndActivateBlocking: () -> Unit = {
@@ -141,10 +164,10 @@ fun CameraScreen(
         }
     }
     
-    // Rotate quotes every 5 seconds
-    LaunchedEffect(Unit) {
+    // Rotate quotes every 3 seconds
+    LaunchedEffect(motivationalQuotes.size) {
         while (true) {
-            delay(5000)
+            delay(3000)
             currentQuoteIndex = (currentQuoteIndex + 1) % motivationalQuotes.size
         }
     }

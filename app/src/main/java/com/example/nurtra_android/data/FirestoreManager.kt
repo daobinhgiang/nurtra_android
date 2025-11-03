@@ -377,6 +377,57 @@ class FirestoreManager {
     }
 
     /**
+     * Saves motivational quotes for a user
+     */
+    suspend fun saveMotivationalQuotes(userId: String, quotes: List<String>): Result<Unit> = try {
+        val now = Timestamp.now()
+        
+        // Create a map of quotes with IDs (1-10)
+        val quotesMap = quotes.mapIndexed { index, quote ->
+            (index + 1).toString() to quote
+        }.toMap()
+        
+        val updateData: Map<String, Any> = mapOf(
+            "motivationalQuotes" to quotesMap,
+            "motivationalQuotesGeneratedAt" to now,
+            "updatedAt" to now
+        )
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Motivational quotes saved for user: $userId, count: ${quotes.size}")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error saving motivational quotes: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Retrieves motivational quotes for a user
+     */
+    suspend fun getUserMotivationalQuotes(userId: String): Result<List<String>> = try {
+        val snapshot = db.collection(USERS_COLLECTION)
+            .document(userId)
+            .get()
+            .await()
+
+        val quotesMap = snapshot.data?.get("motivationalQuotes") as? Map<*, *>
+        val quotes = quotesMap?.values
+            ?.filterIsInstance<String>()
+            ?.toList()
+            ?: emptyList()
+
+        Log.d(TAG, "Retrieved ${quotes.size} quotes for user: $userId")
+        Result.success(quotes)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching user motivational quotes: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
      * Deletes user data from Firestore
      */
     suspend fun deleteUser(userId: String): Result<Unit> = try {

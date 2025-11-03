@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.google.services)
+    kotlin("plugin.serialization") version "1.9.0"
 }
 
 // Load local.properties
@@ -99,6 +100,10 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    
+    // HTTP client for OpenAI API
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

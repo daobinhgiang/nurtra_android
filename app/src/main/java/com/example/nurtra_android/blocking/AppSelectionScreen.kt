@@ -83,8 +83,71 @@ fun AppSelectionScreen(
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Start,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             )
+            
+            // Select All checkbox
+            val allAppsSelected = installedApps.isNotEmpty() && 
+                selectedApps.size == installedApps.size &&
+                installedApps.all { selectedApps.contains(it.packageName) }
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (allAppsSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (allAppsSelected) {
+                                // Deselect all
+                                onSelectionChanged(emptySet())
+                            } else {
+                                // Select all
+                                onSelectionChanged(installedApps.map { it.packageName }.toSet())
+                            }
+                        }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Checkbox(
+                        checked = allAppsSelected,
+                        onCheckedChange = {
+                            if (it) {
+                                // Select all
+                                onSelectionChanged(installedApps.map { it.packageName }.toSet())
+                            } else {
+                                // Deselect all
+                                onSelectionChanged(emptySet())
+                            }
+                        }
+                    )
+                    Text(
+                        text = if (allAppsSelected) {
+                            "Deselect All"
+                        } else {
+                            "Select All"
+                        },
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (allAppsSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
             
             // Apps list
             if (installedApps.isEmpty()) {

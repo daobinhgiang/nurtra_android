@@ -16,6 +16,7 @@ data class NurtraUser(
     val onboardingCompleted: Boolean = false,
     val onboardingCompletedAt: Timestamp? = null,
     val onboardingResponses: OnboardingSurveyResponses? = null,
+    val motivationalQuotes: Map<String, String> = emptyMap(), // Map of quote ID to quote text
     val motivationalQuotesGeneratedAt: Timestamp? = null,
     val overcomeCount: Int = 0,
     val platform: String? = null,
@@ -37,6 +38,7 @@ data class NurtraUser(
                 onboardingResponses = @Suppress("UNCHECKED_CAST") (map["onboardingResponses"] as? Map<String, Any>)?.let {
                     OnboardingSurveyResponses.fromMap(it)
                 },
+                motivationalQuotes = @Suppress("UNCHECKED_CAST") (map["motivationalQuotes"] as? Map<String, String>) ?: emptyMap(),
                 motivationalQuotesGeneratedAt = map["motivationalQuotesGeneratedAt"] as? Timestamp,
                 overcomeCount = (map["overcomeCount"] as? Number)?.toInt() ?: 0,
                 platform = map["platform"] as? String,
@@ -58,6 +60,7 @@ data class NurtraUser(
             "onboardingCompleted" to onboardingCompleted,
             "onboardingCompletedAt" to onboardingCompletedAt,
             "onboardingResponses" to onboardingResponses?.toMap(),
+            "motivationalQuotes" to motivationalQuotes,
             "motivationalQuotesGeneratedAt" to motivationalQuotesGeneratedAt,
             "overcomeCount" to overcomeCount,
             "platform" to platform,

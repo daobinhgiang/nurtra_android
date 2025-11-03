@@ -30,6 +30,7 @@ import com.example.nurtra_android.blocking.AccessibilityServicePermissionDialog
 import com.example.nurtra_android.blocking.AppSelectionScreen
 import com.example.nurtra_android.data.FirestoreManager
 import com.example.nurtra_android.data.OnboardingSurveyResponses
+import com.example.nurtra_android.services.OpenAIService
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
@@ -635,6 +636,7 @@ private fun submitSurvey(
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val firestoreManager = FirestoreManager()
+            val openAIService = OpenAIService()
             
             // Save onboarding data
             val onboardingResult = firestoreManager.updateOnboardingData(
@@ -651,11 +653,45 @@ private fun submitSurvey(
                 
                 blockedAppsResult.onSuccess {
                     Log.d("OnboardingSurvey", "Survey and blocked apps submitted successfully")
-                    CoroutineScope(Dispatchers.Main).launch {
-                        isLoading(false)
-                        // Refresh user data
-                        authViewModel.refreshNurtraUser()
-                        onSuccess()
+                    
+                    // Generate personalized motivational quotes using OpenAI
+                    Log.d("OnboardingSurvey", "Generating personalized motivational quotes...")
+                    val quotesResult = openAIService.generatePersonalizedQuotes(surveyResponses)
+                    
+                    quotesResult.onSuccess { quotes ->
+                        Log.d("OnboardingSurvey", "Generated ${quotes.size} personalized quotes")
+                        
+                        // Save quotes to Firestore
+                        val saveQuotesResult = firestoreManager.saveMotivationalQuotes(
+                            userId = currentUser.uid,
+                            quotes = quotes
+                        )
+                        
+                        saveQuotesResult.onSuccess {
+                            Log.d("OnboardingSurvey", "Motivational quotes saved successfully")
+                            CoroutineScope(Dispatchers.Main).launch {
+                                isLoading(false)
+                                // Refresh user data
+                                authViewModel.refreshNurtraUser()
+                                onSuccess()
+                            }
+                        }.onFailure { error ->
+                            Log.e("OnboardingSurvey", "Failed to save quotes: ${error.message}", error)
+                            // Continue anyway - quotes are not critical for onboarding completion
+                            CoroutineScope(Dispatchers.Main).launch {
+                                isLoading(false)
+                                authViewModel.refreshNurtraUser()
+                                onSuccess()
+                            }
+                        }
+                    }.onFailure { error ->
+                        Log.e("OnboardingSurvey", "Failed to generate quotes: ${error.message}", error)
+                        // Continue anyway - quotes are not critical for onboarding completion
+                        CoroutineScope(Dispatchers.Main).launch {
+                            isLoading(false)
+                            authViewModel.refreshNurtraUser()
+                            onSuccess()
+                        }
                     }
                 }.onFailure { error ->
                     Log.e("OnboardingSurvey", "Failed to save blocked apps: ${error.message}", error)
