@@ -442,4 +442,35 @@ class FirestoreManager {
         Log.e(TAG, "Error deleting user: ${e.message}", e)
         Result.failure(e)
     }
+
+    /**
+     * Deletes all user data including subcollections
+     * This is used when a user deletes their account
+     */
+    suspend fun deleteUserCompletely(userId: String): Result<Unit> = try {
+        val userRef = db.collection(USERS_COLLECTION).document(userId)
+        
+        // Delete all timer sessions
+        val timerSessions = userRef.collection(TIMER_SESSIONS_COLLECTION).get().await()
+        timerSessions.documents.forEach { doc ->
+            doc.reference.delete().await()
+        }
+        Log.d(TAG, "Deleted ${timerSessions.size()} timer sessions for user: $userId")
+        
+        // Delete all binge-free periods
+        val bingeFreePeriods = userRef.collection(BINGE_FREE_PERIODS_COLLECTION).get().await()
+        bingeFreePeriods.documents.forEach { doc ->
+            doc.reference.delete().await()
+        }
+        Log.d(TAG, "Deleted ${bingeFreePeriods.size()} binge-free periods for user: $userId")
+        
+        // Delete the user document itself
+        userRef.delete().await()
+        
+        Log.d(TAG, "User and all associated data deleted completely: $userId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error deleting user completely: ${e.message}", e)
+        Result.failure(e)
+    }
 }

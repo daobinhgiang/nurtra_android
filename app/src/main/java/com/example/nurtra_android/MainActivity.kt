@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -275,6 +276,285 @@ sealed class Screen {
     object Timer : Screen()
     object Camera : Screen()
     object Survey : Screen()
+    object Settings : Screen()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    authViewModel: AuthViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val authUiState by authViewModel.uiState.collectAsState()
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showAppSelection by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
+    
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Top App Bar
+            TopAppBar(
+                title = { Text("Settings") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                }
+            )
+            
+            if (showAppSelection) {
+                // Show app selection screen
+                val currentUser = FirebaseAuth.getInstance().currentUser
+                val blockedApps = authUiState.nurtraUser?.blockedApps?.toSet() ?: emptySet()
+                
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(16.dp)
+                    ) {
+                        com.example.nurtra_android.blocking.AppSelectionScreen(
+                            selectedApps = blockedApps,
+                            onSelectionChanged = { selectedApps ->
+                                // Update blocked apps in Firestore
+                                if (currentUser != null) {
+                                    CoroutineScope(Dispatchers.IO).launch {
+                                        val firestoreManager = FirestoreManager()
+                                        firestoreManager.updateBlockedApps(currentUser.uid, selectedApps.toList())
+                                            .onSuccess {
+                                                // Update AppBlockingManager
+                                                val blockingManager = AppBlockingManager.getInstance(context)
+                                                blockingManager.updateBlockedApps(selectedApps.toList())
+                                                // Refresh user data
+                                                authViewModel.refreshNurtraUser()
+                                                Log.d("SettingsScreen", "Blocked apps updated successfully")
+                                            }
+                                            .onFailure { error ->
+                                                Log.e("SettingsScreen", "Error updating blocked apps: ${error.message}", error)
+                                            }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    
+                    // Done button
+                    Button(
+                        onClick = { showAppSelection = false },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text("Done", modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                }
+            } else {
+                // Show settings options
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // User info section
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Account",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = authUiState.user?.email ?: "Not logged in",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    // Change blocked apps button
+                    Button(
+                        onClick = { showAppSelection = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(
+                            text = "Change Blocked Apps",
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.weight(1f))
+                    
+                    // Logout button
+                    OutlinedButton(
+                        onClick = { showLogoutDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Text(
+                            text = "Logout",
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                    
+                    // Delete account button
+                    Button(
+                        onClick = { showDeleteAccountDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        enabled = !isDeleting
+                    ) {
+                        if (isDeleting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White
+                            )
+                        } else {
+                            Text(
+                                text = "Delete Account",
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    }
+                    
+                    // Show error if delete failed
+                    deleteError?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    // Logout confirmation dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Logout") },
+            text = { Text("Are you sure you want to logout?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        authViewModel.signOut()
+                        showLogoutDialog = false
+                        onNavigateBack()
+                    }
+                ) {
+                    Text("Logout")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Delete account confirmation dialog
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            title = { Text("Delete Account") },
+            text = { 
+                Text("Are you sure you want to delete your account? This action cannot be undone. All your data will be permanently deleted.") 
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        showDeleteConfirmDialog = true
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+    
+    // Final confirmation dialog
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Final Confirmation") },
+            text = { 
+                Text("This is your last chance. Are you absolutely sure you want to permanently delete your account and all associated data?") 
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        isDeleting = true
+                        deleteError = null
+                        
+                        // Delete account
+                        authViewModel.deleteAccount { success: Boolean, error: String? ->
+                            isDeleting = false
+                            if (success) {
+                                // Account deleted successfully, navigate back
+                                onNavigateBack()
+                            } else {
+                                // Show error
+                                deleteError = error ?: "Failed to delete account"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Yes, Delete Forever")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -286,7 +566,6 @@ fun HomeScreen(
     val context = LocalContext.current
     val viewModel: AuthViewModel = viewModel()
     val timerViewModel: TimerViewModel = viewModel()
-    var showLogoutDialog by remember { mutableStateOf(false) }
     var currentScreen by remember { 
         mutableStateOf<Screen>(initialScreen ?: Screen.Timer) 
     }
@@ -304,13 +583,17 @@ fun HomeScreen(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // App Bar with logout (only show on timer screen)
+        // App Bar with settings icon (only show on timer screen)
         if (currentScreen is Screen.Timer) {
             TopAppBar(
                 title = { Text("Nurtra") },
                 actions = {
-                    TextButton(onClick = { showLogoutDialog = true }) {
-                        Text("Logout", color = MaterialTheme.colorScheme.onSurface)
+                    IconButton(onClick = { currentScreen = Screen.Settings }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             )
@@ -405,30 +688,12 @@ fun HomeScreen(
                     onComplete = { currentScreen = Screen.Timer }
                 )
             }
-        }
-        
-        // Logout confirmation dialog
-        if (showLogoutDialog) {
-            AlertDialog(
-                onDismissRequest = { showLogoutDialog = false },
-                title = { Text("Logout") },
-                text = { Text("Are you sure you want to logout?") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            viewModel.signOut()
-                            showLogoutDialog = false
-                        }
-                    ) {
-                        Text("Logout")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showLogoutDialog = false }) {
-                        Text("Cancel")
-                    }
-                }
-            )
+            is Screen.Settings -> {
+                SettingsScreen(
+                    authViewModel = viewModel,
+                    onNavigateBack = { currentScreen = Screen.Timer }
+                )
+            }
         }
     }
 }

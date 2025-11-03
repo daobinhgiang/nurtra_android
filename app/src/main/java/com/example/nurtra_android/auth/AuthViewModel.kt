@@ -216,5 +216,56 @@ class AuthViewModel : ViewModel() {
             }
         }
     }
+    
+    /**
+     * Deletes the user's account completely
+     * This includes:
+     * 1. Deleting all Firestore data (user document and subcollections)
+     * 2. Deleting the Firebase Auth account
+     * 3. Signing out
+     */
+    fun deleteAccount(onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val currentUser = auth.currentUser
+                if (currentUser == null) {
+                    onResult(false, "No user is currently signed in")
+                    return@launch
+                }
+                
+                val userId = currentUser.uid
+                Log.d(TAG, "Starting account deletion for user: $userId")
+                
+                // Step 1: Delete all Firestore data
+                val firestoreResult = firestoreManager.deleteUserCompletely(userId)
+                if (firestoreResult.isFailure) {
+                    Log.e(TAG, "Failed to delete Firestore data: ${firestoreResult.exceptionOrNull()?.message}")
+                    onResult(false, "Failed to delete user data: ${firestoreResult.exceptionOrNull()?.message}")
+                    return@launch
+                }
+                
+                Log.d(TAG, "Firestore data deleted successfully")
+                
+                // Step 2: Delete Firebase Auth account
+                try {
+                    currentUser.delete().await()
+                    Log.d(TAG, "Firebase Auth account deleted successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to delete Firebase Auth account: ${e.message}", e)
+                    onResult(false, "Failed to delete authentication account: ${e.message}")
+                    return@launch
+                }
+                
+                // Step 3: Sign out and clear state
+                _uiState.value = AuthUiState()
+                Log.d(TAG, "Account deletion completed successfully")
+                
+                onResult(true, null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error during account deletion: ${e.message}", e)
+                onResult(false, "An unexpected error occurred: ${e.message}")
+            }
+        }
+    }
 }
 
