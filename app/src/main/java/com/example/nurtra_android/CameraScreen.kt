@@ -240,7 +240,7 @@ fun CameraScreen(
             color = Color.Transparent
         ) {
             Text(
-                text = formatTime(uiState.elapsedTimeInMillis),
+                text = formatTimeWithMillis(uiState.elapsedTimeInMillis),
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.Green,

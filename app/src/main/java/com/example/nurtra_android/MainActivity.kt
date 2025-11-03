@@ -698,13 +698,33 @@ fun HomeScreen(
     }
 }
 
-// Format time display for stopwatch (MM:SS.mm)
+// Format time display for stopwatch on home page (HH:MM:SS)
 fun formatTime(millis: Long): String {
     val totalSeconds = millis / 1000
-    val minutes = totalSeconds / 60
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    
+    return if (hours > 0) {
+        String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+    }
+}
+
+// Format time display for craving screens with milliseconds (HH:MM:SS.mm)
+fun formatTimeWithMillis(millis: Long): String {
+    val totalSeconds = millis / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
     val milliseconds = (millis % 1000) / 10 // Show centiseconds
-    return String.format(Locale.getDefault(), "%02d:%02d.%02d", minutes, seconds, milliseconds)
+    
+    return if (hours > 0) {
+        String.format(Locale.getDefault(), "%02d:%02d:%02d.%02d", hours, minutes, seconds, milliseconds)
+    } else {
+        String.format(Locale.getDefault(), "%02d:%02d.%02d", minutes, seconds, milliseconds)
+    }
 }
 
 // Format duration for binge-free periods display
