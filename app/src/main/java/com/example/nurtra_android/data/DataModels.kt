@@ -211,3 +211,37 @@ data class BingeFreePeriod(
         )
     }
 }
+
+/**
+ * Post-binge survey responses model
+ * Stores responses from the 3-step survey after a binge episode
+ */
+data class BingeSurveyResponse(
+    val id: String = "",
+    val feelings: List<String> = emptyList(), // Step 1: How do you feel?
+    val triggers: List<String> = emptyList(), // Step 2: What led you to the binge?
+    val strategies: List<String> = emptyList(), // Step 3: What would you have done differently next time?
+    val createdAt: Timestamp? = null
+) {
+    companion object {
+        fun fromMap(map: Map<String, Any>): BingeSurveyResponse {
+            return BingeSurveyResponse(
+                id = map["id"] as? String ?: "",
+                feelings = (map["feelings"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                triggers = (map["triggers"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                strategies = (map["strategies"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                createdAt = map["createdAt"] as? Timestamp
+            )
+        }
+    }
+
+    fun toMap(): Map<String, Any?> {
+        return mapOf(
+            "id" to id,
+            "feelings" to feelings,
+            "triggers" to triggers,
+            "strategies" to strategies,
+            "createdAt" to createdAt
+        )
+    }
+}

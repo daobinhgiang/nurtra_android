@@ -22,6 +22,7 @@ class FirestoreManager {
         private const val TIMER_SESSIONS_COLLECTION = "timerSessions"
         private const val BINGE_FREE_PERIODS_COLLECTION = "bingeFreePeriods"
         private const val MOTIVATIONAL_QUOTES_COLLECTION = "motivationalQuotes"
+        private const val BINGE_SURVEYS_COLLECTION = "bingeSurveys"
     }
 
     /**
@@ -444,6 +445,34 @@ class FirestoreManager {
     }
 
     /**
+     * Saves a binge survey response
+     */
+    suspend fun saveBingeSurvey(
+        userId: String,
+        surveyResponse: BingeSurveyResponse
+    ): Result<String> = try {
+        val surveyId = UUID.randomUUID().toString()
+        val now = Timestamp.now()
+        val surveyData = surveyResponse.copy(
+            id = surveyId,
+            createdAt = now
+        ).toMap()
+
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(BINGE_SURVEYS_COLLECTION)
+            .document(surveyId)
+            .set(surveyData)
+            .await()
+
+        Log.d(TAG, "Binge survey saved: $surveyId for user: $userId")
+        Result.success(surveyId)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error saving binge survey: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
      * Deletes all user data including subcollections
      * This is used when a user deletes their account
      */
@@ -463,6 +492,13 @@ class FirestoreManager {
             doc.reference.delete().await()
         }
         Log.d(TAG, "Deleted ${bingeFreePeriods.size()} binge-free periods for user: $userId")
+        
+        // Delete all binge surveys
+        val bingeSurveys = userRef.collection(BINGE_SURVEYS_COLLECTION).get().await()
+        bingeSurveys.documents.forEach { doc ->
+            doc.reference.delete().await()
+        }
+        Log.d(TAG, "Deleted ${bingeSurveys.size()} binge surveys for user: $userId")
         
         // Delete the user document itself
         userRef.delete().await()

@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -37,6 +38,7 @@ import com.example.nurtra_android.data.NotificationHelper
 import com.example.nurtra_android.data.FCMTokenManager
 import com.example.nurtra_android.data.FirestoreManager
 import com.example.nurtra_android.data.BingeFreePeriod
+import com.example.nurtra_android.data.BingeSurveyResponse
 import com.example.nurtra_android.theme.NurtraTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.Timestamp
@@ -937,15 +939,58 @@ fun TimerScreen(
 }
 
 
-// Survey emotion options
-val surveyEmotions = listOf(
-    "Guilty",
-    "Ashamed",
-    "Anxious",
-    "Sad",
-    "Numb",
-    "Stressed",
-    "Other"
+// Binge survey step data
+data class BingeSurveyStep(
+    val stepNumber: Int,
+    val title: String,
+    val question: String,
+    val options: List<String>
+)
+
+// Binge survey steps configuration based on BINGE_SURVEY_QUESTIONS.md
+private val bingeSurveySteps = listOf(
+    BingeSurveyStep(
+        stepNumber = 0,
+        title = "How do you feel?",
+        question = "How do you feel?",
+        options = listOf(
+            "Guilty",
+            "Ashamed",
+            "Anxious",
+            "Sad",
+            "Numb",
+            "Stressed",
+            "Other"
+        )
+    ),
+    BingeSurveyStep(
+        stepNumber = 1,
+        title = "What led to the binge?",
+        question = "What led you to the binge?",
+        options = listOf(
+            "Stress",
+            "Boredom",
+            "Loneliness",
+            "Fatigue",
+            "Social pressure",
+            "Restricting earlier",
+            "Other"
+        )
+    ),
+    BingeSurveyStep(
+        stepNumber = 2,
+        title = "Next time, I could…",
+        question = "What would you have done differently next time?",
+        options = listOf(
+            "Call a friend",
+            "Go for a walk",
+            "Have a balanced snack",
+            "Journal feelings",
+            "Practice mindfulness",
+            "Delay 10 minutes",
+            "Other"
+        )
+    )
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -953,80 +998,113 @@ val surveyEmotions = listOf(
 fun BingeSurveyScreen(
     onComplete: () -> Unit
 ) {
-    var selectedEmotions by remember { mutableStateOf(setOf<String>()) }
-    var showOtherInput by remember { mutableStateOf(false) }
-    var otherInput by remember { mutableStateOf("") }
-    
+    var currentStep by remember { mutableStateOf(0) }
+    var responses by remember { mutableStateOf<Map<Int, Set<String>>>(emptyMap()) }
+    var otherTexts by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var isSubmitting by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val currentStepData = bingeSurveySteps[currentStep]
+    val progress = (currentStep + 1) / bingeSurveySteps.size.toFloat()
+
+    // Current step responses
+    val currentResponses = responses[currentStep] ?: emptySet()
+    val currentOtherText = otherTexts[currentStep] ?: ""
+
+    // Check if can proceed to next step
+    val canProceed = currentResponses.isNotEmpty() &&
+            !(currentResponses.contains("Other") && currentOtherText.isBlank())
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top App Bar with back button
+            // Top App Bar (only show back button if not on first step)
             TopAppBar(
-                title = { Text("Binge Survey") },
+                title = { Text(currentStepData.title) },
                 navigationIcon = {
-                    IconButton(onClick = onComplete) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                    if (currentStep > 0) {
+                        IconButton(onClick = {
+                            if (currentStep > 0) {
+                                currentStep--
+                                errorMessage = null
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
                     }
                 }
             )
-            
+
             // Progress bar
             LinearProgressIndicator(
-                progress = { 1f },
+                progress = { progress },
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.primary
             )
-            
+
+            // Step indicator
+            Text(
+                text = "Step ${currentStep + 1} of ${bingeSurveySteps.size}",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                textAlign = TextAlign.Center,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             // Content
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Question
                 Text(
-                    text = "How do you feel?",
+                    text = currentStepData.question,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
-                
-                // Emotion options
+
+                // Options
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    surveyEmotions.forEach { emotion ->
-                        val isSelected = selectedEmotions.contains(emotion)
-                        
+                    currentStepData.options.forEach { option ->
+                        val isSelected = currentResponses.contains(option)
+
                         FilterChip(
                             selected = isSelected,
                             onClick = {
-                                if (emotion == "Other") {
-                                    showOtherInput = !isSelected
-                                    if (!isSelected) {
-                                        selectedEmotions = selectedEmotions + emotion
-                                    } else {
-                                        selectedEmotions = selectedEmotions - emotion
-                                        otherInput = ""
-                                    }
+                                val newResponses = if (isSelected) {
+                                    // Deselect
+                                    currentResponses - option
                                 } else {
-                                    if (isSelected) {
-                                        selectedEmotions = selectedEmotions - emotion
-                                    } else {
-                                        selectedEmotions = selectedEmotions + emotion
+                                    // Select (multiple choice is always allowed)
+                                    currentResponses + option
+                                }
+
+                                responses = responses + (currentStep to newResponses)
+
+                                // Handle "Other" text field
+                                if (option == "Other") {
+                                    if (!isSelected && newResponses.contains("Other")) {
+                                        // "Other" was just selected - keep text if exists
+                                    } else if (!newResponses.contains("Other")) {
+                                        // "Other" was deselected - clear text
+                                        otherTexts = otherTexts - currentStep
                                     }
                                 }
                             },
-                            label = { Text(emotion) },
+                            label = { Text(option) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primary,
@@ -1044,36 +1122,171 @@ fun BingeSurveyScreen(
                         )
                     }
                 }
-                
+
                 // Other input field (if "Other" is selected)
-                if (showOtherInput) {
+                if (currentResponses.contains("Other")) {
                     OutlinedTextField(
-                        value = otherInput,
-                        onValueChange = { otherInput = it },
+                        value = currentOtherText,
+                        onValueChange = {
+                            otherTexts = otherTexts + (currentStep to it)
+                        },
                         label = { Text("Please specify") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = false,
+                        minLines = 2
                     )
                 }
-                
-                // Submit button
+
+                // Error message
+                errorMessage?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 14.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Navigation buttons
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.End
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    if (currentStep > 0) {
+                        OutlinedButton(
+                            onClick = {
+                                currentStep--
+                                errorMessage = null
+                            }
+                        ) {
+                            Text("Back")
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+
                     Button(
                         onClick = {
-                            // TODO: Save survey responses to Firestore
-                            // For now, just navigate back
-                            onComplete()
+                            if (currentStep < bingeSurveySteps.size - 1) {
+                                // Move to next step
+                                currentStep++
+                                errorMessage = null
+                            } else {
+                                // Last step - submit survey
+                                submitBingeSurvey(
+                                    responses = responses,
+                                    otherTexts = otherTexts,
+                                    onSuccess = {
+                                        onComplete()
+                                    },
+                                    onError = { error ->
+                                        errorMessage = error
+                                    },
+                                    isLoading = { isSubmitting = it }
+                                )
+                            }
                         },
-                        enabled = selectedEmotions.isNotEmpty() && !(selectedEmotions.contains("Other") && otherInput.isBlank())
+                        enabled = canProceed && !isSubmitting
                     ) {
-                        Text("Submit", modifier = Modifier.padding(vertical = 8.dp))
+                        if (isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White
+                            )
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = if (currentStep == bingeSurveySteps.size - 1) {
+                                        "Submit"
+                                    } else {
+                                        "Next"
+                                    },
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                                if (currentStep < bingeSurveySteps.size - 1) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowForward,
+                                        contentDescription = "Next"
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+private fun submitBingeSurvey(
+    responses: Map<Int, Set<String>>,
+    otherTexts: Map<Int, String>,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+    isLoading: (Boolean) -> Unit
+) {
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    if (currentUser == null) {
+        onError("User not authenticated")
+        return
+    }
+
+    isLoading(true)
+
+    // Format responses by replacing "Other" with actual text if provided
+    fun formatResponses(stepResponses: Set<String>?, otherText: String?): List<String> {
+        if (stepResponses == null || stepResponses.isEmpty()) return emptyList()
+
+        return stepResponses.map { response ->
+            if (response == "Other" && !otherText.isNullOrBlank()) {
+                otherText
+            } else if (response == "Other") {
+                "Other"
+            } else {
+                response
+            }
+        }
+    }
+
+    // Map responses to BingeSurveyResponse
+    val surveyResponse = BingeSurveyResponse(
+        feelings = formatResponses(responses[0], otherTexts[0]),
+        triggers = formatResponses(responses[1], otherTexts[1]),
+        strategies = formatResponses(responses[2], otherTexts[2])
+    )
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val firestoreManager = FirestoreManager()
+            val result = firestoreManager.saveBingeSurvey(
+                userId = currentUser.uid,
+                surveyResponse = surveyResponse
+            )
+
+            result.onSuccess {
+                Log.d("BingeSurveyScreen", "Binge survey submitted successfully")
+                CoroutineScope(Dispatchers.Main).launch {
+                    isLoading(false)
+                    onSuccess()
+                }
+            }.onFailure { error ->
+                Log.e("BingeSurveyScreen", "Failed to submit binge survey: ${error.message}", error)
+                CoroutineScope(Dispatchers.Main).launch {
+                    isLoading(false)
+                    onError("Failed to save survey: ${error.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("BingeSurveyScreen", "Error submitting binge survey", e)
+            CoroutineScope(Dispatchers.Main).launch {
+                isLoading(false)
+                onError("An error occurred: ${e.message}")
             }
         }
     }
