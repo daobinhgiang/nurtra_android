@@ -178,6 +178,27 @@ class FirestoreManager {
     }
 
     /**
+     * Retrieves the latest N binge-free periods for a user, ordered by creation date (newest first)
+     */
+    suspend fun getLatestBingeFreePeriods(userId: String, limit: Int = 3): Result<List<BingeFreePeriod>> = try {
+        val snapshot = db.collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(BINGE_FREE_PERIODS_COLLECTION)
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(limit.toLong())
+            .get()
+            .await()
+
+        val periods = snapshot.documents.mapNotNull { doc ->
+            doc.data?.let { BingeFreePeriod.fromMap(it) }
+        }
+        Result.success(periods)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching latest binge-free periods: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
      * Retrieves all timer sessions for a user
      */
     suspend fun getTimerSessions(userId: String): Result<List<TimerData>> = try {

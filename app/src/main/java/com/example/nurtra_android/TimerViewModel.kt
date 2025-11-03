@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nurtra_android.data.FirestoreManager
+import com.example.nurtra_android.data.BingeFreePeriod
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
@@ -17,7 +18,8 @@ data class TimerUiState(
     val elapsedTimeInMillis: Long = 0L,
     val isTimerRunning: Boolean = false,
     val startTime: Timestamp? = null,
-    val isInitialLoadComplete: Boolean = false
+    val isInitialLoadComplete: Boolean = false,
+    val latestBingeFreePeriods: List<BingeFreePeriod> = emptyList()
 )
 
 class TimerViewModel : ViewModel() {
@@ -34,6 +36,8 @@ class TimerViewModel : ViewModel() {
     init {
         // Load timer state from Firebase on initialization
         loadTimerState()
+        // Load latest binge-free periods
+        loadBingeFreePeriods()
     }
 
     /**
@@ -165,6 +169,24 @@ class TimerViewModel : ViewModel() {
                 delay(10)
                 
                 if (!_uiState.value.isTimerRunning) break
+            }
+        }
+    }
+
+    /**
+     * Loads the latest binge-free periods from Firebase
+     */
+    fun loadBingeFreePeriods() {
+        val userId = auth.currentUser?.uid ?: return
+        
+        viewModelScope.launch {
+            firestoreManager.getLatestBingeFreePeriods(userId, limit = 3).onSuccess { periods ->
+                _uiState.value = _uiState.value.copy(
+                    latestBingeFreePeriods = periods
+                )
+                Log.d(TAG, "Loaded ${periods.size} binge-free periods")
+            }.onFailure { error ->
+                Log.e(TAG, "Error loading binge-free periods: ${error.message}", error)
             }
         }
     }

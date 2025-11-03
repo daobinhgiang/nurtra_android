@@ -35,8 +35,10 @@ import com.example.nurtra_android.blocking.BlockingOverlay
 import com.example.nurtra_android.data.NotificationHelper
 import com.example.nurtra_android.data.FCMTokenManager
 import com.example.nurtra_android.data.FirestoreManager
+import com.example.nurtra_android.data.BingeFreePeriod
 import com.example.nurtra_android.theme.NurtraTheme
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.Timestamp
 import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -359,6 +361,35 @@ fun HomeScreen(
                         currentScreen = Screen.Timer
                     },
                     onBinged = {
+                        // Save binge-free period before stopping the timer
+                        val currentUser = FirebaseAuth.getInstance().currentUser
+                        val timerState = timerViewModel.uiState.value
+                        val startTime = timerState.startTime
+                        
+                        if (currentUser != null && startTime != null) {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val firestoreManager = FirestoreManager()
+                                val now = Timestamp.now()
+                                val durationMillis = now.toDate().time - startTime.toDate().time
+                                
+                                val bingeFreePeriod = BingeFreePeriod(
+                                    id = "", // Will be set by FirestoreManager
+                                    startTime = startTime,
+                                    endTime = now,
+                                    duration = durationMillis,
+                                    createdAt = now
+                                )
+                                
+                                firestoreManager.saveBingeFreePeriod(currentUser.uid, bingeFreePeriod).onSuccess {
+                                    Log.d("MainActivity", "Binge-free period saved: ${durationMillis}ms")
+                                    // Refresh the binge-free periods list
+                                    timerViewModel.loadBingeFreePeriods()
+                                }.onFailure { error ->
+                                    Log.e("MainActivity", "Failed to save binge-free period: ${error.message}", error)
+                                }
+                            }
+                        }
+                        
                         // Stop the timer when user binged - they need to start over
                         // Deactivate blocking immediately since session is ending
                         val blockingManager = AppBlockingManager.getInstance(context)
@@ -409,6 +440,56 @@ fun formatTime(millis: Long): String {
     val seconds = totalSeconds % 60
     val milliseconds = (millis % 1000) / 10 // Show centiseconds
     return String.format(Locale.getDefault(), "%02d:%02d.%02d", minutes, seconds, milliseconds)
+}
+
+// Format duration for binge-free periods display
+fun formatDuration(durationMillis: Long): String {
+    val totalSeconds = durationMillis / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    
+    return when {
+        hours > 0 -> String.format(Locale.getDefault(), "%dh %dm %ds", hours, minutes, seconds)
+        minutes > 0 -> String.format(Locale.getDefault(), "%dm %ds", minutes, seconds)
+        else -> String.format(Locale.getDefault(), "%ds", seconds)
+    }
+}
+
+// Format date for display
+fun formatDate(timestamp: Timestamp): String {
+    val date = timestamp.toDate()
+    val formatter = java.text.SimpleDateFormat("MMM dd, yyyy 'at' h:mm a", Locale.getDefault())
+    return formatter.format(date)
+}
+
+@Composable
+fun BingeFreePeriodItem(period: BingeFreePeriod) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = formatDuration(period.duration),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            period.endTime?.let {
+                Text(
+                    text = formatDate(it),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -481,6 +562,42 @@ fun TimerScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
+                }
+            }
+            
+            // Binge-Free Periods Log
+            if (uiState.latestBingeFreePeriods.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Recent Binge-Free Periods",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        
+                        uiState.latestBingeFreePeriods.forEach { period ->
+                            BingeFreePeriodItem(period)
+                            if (period != uiState.latestBingeFreePeriods.last()) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f)
+                                )
+                            }
+                        }
+                    }
                 }
             }
             
