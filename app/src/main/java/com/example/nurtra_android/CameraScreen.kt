@@ -91,27 +91,57 @@ fun CameraScreen(
     
     var currentQuoteIndex by remember { mutableStateOf(0) }
     var motivationalQuotes by remember { mutableStateOf(defaultMotivationalQuotes) }
+    var audioUrls by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var isPlayingAudio by remember { mutableStateOf(false) }
     
-    // Fetch personalized motivational quotes from Firebase
+    // Fetch personalized motivational quotes and audio URLs from Firebase
     LaunchedEffect(Unit) {
+        Log.d("CameraScreen", "=== Initializing CameraScreen ===")
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser != null) {
+            Log.d("CameraScreen", "User authenticated: ${currentUser.uid}")
             val firestoreManager = FirestoreManager()
-            val quotesResult = firestoreManager.getUserMotivationalQuotes(currentUser.uid)
             
+            // Fetch quotes
+            Log.d("CameraScreen", "Fetching motivational quotes from Firestore...")
+            val quotesResult = firestoreManager.getUserMotivationalQuotes(currentUser.uid)
             quotesResult.onSuccess { quotes ->
                 if (quotes.isNotEmpty()) {
                     motivationalQuotes = quotes
-                    Log.d("CameraScreen", "Loaded ${quotes.size} personalized quotes")
+                    Log.d("CameraScreen", "✓ Loaded ${quotes.size} personalized quotes")
+                    quotes.forEachIndexed { index, quote ->
+                        Log.d("CameraScreen", "  Quote ${index + 1}: ${quote.take(60)}${if (quote.length > 60) "..." else ""}")
+                    }
                 } else {
-                    Log.d("CameraScreen", "No personalized quotes found, using defaults")
+                    Log.d("CameraScreen", "⚠ No personalized quotes found, using ${defaultMotivationalQuotes.size} default quotes")
                 }
             }.onFailure { error ->
-                Log.e("CameraScreen", "Failed to load quotes: ${error.message}", error)
+                Log.e("CameraScreen", "✗ Failed to load quotes: ${error.message}", error)
                 // Continue with default quotes
             }
+            
+            // Fetch audio URLs
+            Log.d("CameraScreen", "Fetching audio URLs from Firestore...")
+            val audioUrlsResult = firestoreManager.getUserMotivationalQuoteAudioUrls(currentUser.uid)
+            audioUrlsResult.onSuccess { urls ->
+                if (urls.isNotEmpty()) {
+                    audioUrls = urls
+                    Log.d("CameraScreen", "✓ Loaded ${urls.size} audio URLs")
+                    urls.forEach { (quoteId, url) ->
+                        Log.d("CameraScreen", "  Quote $quoteId: ${url.take(60)}...")
+                    }
+                } else {
+                    Log.d("CameraScreen", "⚠ No audio URLs found - quotes will display without audio")
+                }
+            }.onFailure { error ->
+                Log.e("CameraScreen", "✗ Failed to load audio URLs: ${error.message}", error)
+            }
+        } else {
+            Log.w("CameraScreen", "⚠ No authenticated user - using default quotes only")
         }
+        Log.d("CameraScreen", "=== CameraScreen initialization complete ===")
     }
     
     // Function to check and activate blocking
@@ -155,21 +185,118 @@ fun CameraScreen(
         }
     }
     
-    // Deactivate blocking when leaving CameraScreen
+    // Deactivate blocking and cleanup MediaPlayer when leaving CameraScreen
     DisposableEffect(Unit) {
         onDispose {
+            // Stop and release MediaPlayer
+            mediaPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+                release()
+            }
+            mediaPlayer = null
+            
             val blockingManager = AppBlockingManager.getInstance(context)
             blockingManager.deactivateBlocking()
-            Log.d("CameraScreen", "App blocking deactivated")
+            Log.d("CameraScreen", "App blocking deactivated and MediaPlayer cleaned up")
         }
     }
     
-    // Rotate quotes every 3 seconds
-    LaunchedEffect(motivationalQuotes.size) {
-        while (true) {
-            delay(3000)
-            currentQuoteIndex = (currentQuoteIndex + 1) % motivationalQuotes.size
+    // Play audio and rotate quotes based on audio duration
+    LaunchedEffect(motivationalQuotes.size, currentQuoteIndex, audioUrls) {
+        if (motivationalQuotes.isEmpty()) {
+            Log.d("CameraScreen", "No quotes available, skipping rotation")
+            return@LaunchedEffect
         }
+        
+        val quoteId = (currentQuoteIndex + 1).toString()
+        val currentQuote = motivationalQuotes[currentQuoteIndex]
+        val audioUrl = audioUrls[quoteId]
+        
+        Log.d("CameraScreen", "--- Displaying quote $quoteId (${currentQuoteIndex + 1}/${motivationalQuotes.size}) ---")
+        Log.d("CameraScreen", "Quote text: ${currentQuote.take(80)}${if (currentQuote.length > 80) "..." else ""}")
+        
+        if (audioUrl != null && !isPlayingAudio) {
+            // Play audio for current quote
+            Log.d("CameraScreen", "Audio URL found for quote $quoteId: ${audioUrl.take(60)}...")
+            try {
+                isPlayingAudio = true
+                val playbackStartTime = System.currentTimeMillis()
+                Log.d("CameraScreen", "Initializing MediaPlayer for quote $quoteId...")
+                
+                val player = android.media.MediaPlayer().apply {
+                    setDataSource(audioUrl)
+                    setOnPreparedListener { mp ->
+                        val prepareTime = System.currentTimeMillis() - playbackStartTime
+                        Log.d("CameraScreen", "MediaPlayer prepared for quote $quoteId in ${prepareTime}ms")
+                        val duration = mp.duration
+                        Log.d("CameraScreen", "Audio duration: ${duration}ms (${duration / 1000.0}s)")
+                        mp.start()
+                        Log.d("CameraScreen", "▶ Started playing audio for quote $quoteId")
+                    }
+                    setOnCompletionListener { mp ->
+                        val playbackTime = System.currentTimeMillis() - playbackStartTime
+                        Log.d("CameraScreen", "✓ Audio completed for quote $quoteId (total playback time: ${playbackTime}ms)")
+                        mp.release()
+                        mediaPlayer = null
+                        isPlayingAudio = false
+                    }
+                    setOnErrorListener { mp, what, extra ->
+                        Log.e("CameraScreen", "✗ MediaPlayer error for quote $quoteId: what=$what, extra=$extra")
+                        mp.release()
+                        mediaPlayer = null
+                        isPlayingAudio = false
+                        true
+                    }
+                    prepareAsync()
+                }
+                mediaPlayer = player
+                
+                // Wait for audio to complete (with timeout)
+                var waitTime = 0L
+                val maxWaitTime = 30000L // 30 seconds max
+                Log.d("CameraScreen", "Waiting for audio to complete (max: ${maxWaitTime}ms)...")
+                while (isPlayingAudio && waitTime < maxWaitTime) {
+                    delay(100)
+                    waitTime += 100
+                    if (waitTime % 2000 == 0L) {
+                        Log.d("CameraScreen", "Still waiting for audio... (${waitTime}ms)")
+                    }
+                }
+                
+                if (waitTime >= maxWaitTime) {
+                    Log.w("CameraScreen", "⚠ Audio playback timeout reached (${maxWaitTime}ms)")
+                }
+                
+                // Wait additional 1 second after audio completes
+                Log.d("CameraScreen", "Waiting 1 second before rotating to next quote...")
+                delay(1000)
+                
+            } catch (e: Exception) {
+                Log.e("CameraScreen", "✗ Error playing audio for quote $quoteId: ${e.message}", e)
+                e.printStackTrace()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                isPlayingAudio = false
+                // Fallback to 3-second delay
+                Log.d("CameraScreen", "Falling back to 3-second delay")
+                delay(3000)
+            }
+        } else {
+            // No audio available, use default 3-second delay
+            if (audioUrl == null) {
+                Log.d("CameraScreen", "No audio URL for quote $quoteId - using 3-second delay")
+            } else {
+                Log.d("CameraScreen", "Audio already playing - skipping new playback")
+            }
+            delay(3000)
+        }
+        
+        // Move to next quote
+        val nextIndex = (currentQuoteIndex + 1) % motivationalQuotes.size
+        Log.d("CameraScreen", "Rotating from quote ${currentQuoteIndex + 1} to quote ${nextIndex + 1}")
+        currentQuoteIndex = nextIndex
     }
     
     LaunchedEffect(Unit) {

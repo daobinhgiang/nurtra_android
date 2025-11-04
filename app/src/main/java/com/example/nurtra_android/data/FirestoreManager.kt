@@ -429,6 +429,59 @@ class FirestoreManager {
     }
 
     /**
+     * Saves motivational quote audio URLs for a user
+     */
+    suspend fun saveMotivationalQuoteAudioUrls(userId: String, audioUrls: Map<String, String>): Result<Unit> = try {
+        Log.d(TAG, "Saving ${audioUrls.size} audio URLs for user: $userId")
+        audioUrls.forEach { (quoteId, url) ->
+            Log.d(TAG, "  Quote $quoteId: ${url.take(80)}...")
+        }
+        
+        val now = Timestamp.now()
+        
+        val updateData: Map<String, Any> = mapOf(
+            "motivationalQuoteAudioUrls" to audioUrls,
+            "updatedAt" to now
+        )
+
+        Log.d(TAG, "Updating Firestore document for user: $userId")
+        db.collection(USERS_COLLECTION)
+            .document(userId)
+            .update(updateData)
+            .await()
+
+        Log.d(TAG, "Successfully saved motivational quote audio URLs for user: $userId, count: ${audioUrls.size}")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error saving motivational quote audio URLs: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
+     * Retrieves motivational quote audio URLs for a user
+     */
+    suspend fun getUserMotivationalQuoteAudioUrls(userId: String): Result<Map<String, String>> = try {
+        Log.d(TAG, "Fetching audio URLs for user: $userId")
+        val snapshot = db.collection(USERS_COLLECTION)
+            .document(userId)
+            .get()
+            .await()
+
+        @Suppress("UNCHECKED_CAST")
+        val audioUrls = snapshot.data?.get("motivationalQuoteAudioUrls") as? Map<String, String>
+            ?: emptyMap()
+
+        Log.d(TAG, "Retrieved ${audioUrls.size} audio URLs for user: $userId")
+        audioUrls.forEach { (quoteId, url) ->
+            Log.d(TAG, "  Quote $quoteId audio URL: ${url.take(80)}...")
+        }
+        Result.success(audioUrls)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error fetching user motivational quote audio URLs: ${e.message}", e)
+        Result.failure(e)
+    }
+
+    /**
      * Deletes user data from Firestore
      */
     suspend fun deleteUser(userId: String): Result<Unit> = try {

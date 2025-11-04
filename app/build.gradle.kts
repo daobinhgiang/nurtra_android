@@ -34,6 +34,10 @@ android {
         // Add OpenAI API Key to BuildConfig
         val openAiApiKey = localProperties.getProperty("OPENAI_API_KEY")?.trim('"') ?: ""
         buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
+        
+        // Add ElevenLabs API Key to BuildConfig
+        val elevenLabsApiKey = localProperties.getProperty("ELEVENLABS_API_KEY")?.trim('"') ?: ""
+        buildConfigField("String", "ELEVENLABS_API_KEY", "\"$elevenLabsApiKey\"")
     }
 
     buildTypes {
@@ -86,6 +90,7 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.firestore.ktx)
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.storage)
     
     // Google Sign-In
     implementation(libs.play.services.auth)

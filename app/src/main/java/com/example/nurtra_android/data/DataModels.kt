@@ -18,6 +18,7 @@ data class NurtraUser(
     val onboardingResponses: OnboardingSurveyResponses? = null,
     val motivationalQuotes: Map<String, String> = emptyMap(), // Map of quote ID to quote text
     val motivationalQuotesGeneratedAt: Timestamp? = null,
+    val motivationalQuoteAudioUrls: Map<String, String> = emptyMap(), // Map of quote ID to audio URL
     val overcomeCount: Int = 0,
     val platform: String? = null,
     val timerIsRunning: Boolean = false,
@@ -40,6 +41,7 @@ data class NurtraUser(
                 },
                 motivationalQuotes = @Suppress("UNCHECKED_CAST") (map["motivationalQuotes"] as? Map<String, String>) ?: emptyMap(),
                 motivationalQuotesGeneratedAt = map["motivationalQuotesGeneratedAt"] as? Timestamp,
+                motivationalQuoteAudioUrls = @Suppress("UNCHECKED_CAST") (map["motivationalQuoteAudioUrls"] as? Map<String, String>) ?: emptyMap(),
                 overcomeCount = (map["overcomeCount"] as? Number)?.toInt() ?: 0,
                 platform = map["platform"] as? String,
                 timerIsRunning = map["timerIsRunning"] as? Boolean ?: false,
@@ -62,6 +64,7 @@ data class NurtraUser(
             "onboardingResponses" to onboardingResponses?.toMap(),
             "motivationalQuotes" to motivationalQuotes,
             "motivationalQuotesGeneratedAt" to motivationalQuotesGeneratedAt,
+            "motivationalQuoteAudioUrls" to motivationalQuoteAudioUrls,
             "overcomeCount" to overcomeCount,
             "platform" to platform,
             "timerIsRunning" to timerIsRunning,

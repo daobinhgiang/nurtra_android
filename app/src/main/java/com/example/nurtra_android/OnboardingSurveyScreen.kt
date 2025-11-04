@@ -669,6 +669,103 @@ private fun submitSurvey(
                         
                         saveQuotesResult.onSuccess {
                             Log.d("OnboardingSurvey", "Motivational quotes saved successfully")
+                            
+                            // Generate audio for each quote using ElevenLabs (in background)
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    Log.d("OnboardingSurvey", "=== Starting audio generation process ===")
+                                    Log.d("OnboardingSurvey", "Total quotes to process: ${quotes.size}")
+                                    val startTime = System.currentTimeMillis()
+                                    
+                                    val elevenLabsService = com.example.nurtra_android.services.ElevenLabsService()
+                                    val storageManager = com.example.nurtra_android.data.FirebaseStorageManager()
+                                    val audioUrls = mutableMapOf<String, String>()
+                                    
+                                    // Generate and upload audio for each quote
+                                    for ((index, quote) in quotes.withIndex()) {
+                                        val quoteId = (index + 1).toString()
+                                        val quoteStartTime = System.currentTimeMillis()
+                                        Log.d("OnboardingSurvey", "--- Processing quote $quoteId (${index + 1}/${quotes.size}) ---")
+                                        Log.d("OnboardingSurvey", "Quote text: ${quote.take(100)}${if (quote.length > 100) "..." else ""}")
+                                        
+                                        try {
+                                            // Generate audio using ElevenLabs
+                                            Log.d("OnboardingSurvey", "Calling ElevenLabs API for quote $quoteId...")
+                                            val audioResult = elevenLabsService.generateSpeech(quote)
+                                            
+                                            if (audioResult.isSuccess) {
+                                                val audioData = audioResult.getOrThrow()
+                                                val generationTime = System.currentTimeMillis() - quoteStartTime
+                                                Log.d("OnboardingSurvey", "Audio generated for quote $quoteId in ${generationTime}ms (${audioData.size} bytes)")
+                                                
+                                                // Upload to Firebase Storage
+                                                Log.d("OnboardingSurvey", "Uploading audio to Firebase Storage for quote $quoteId...")
+                                                val uploadStartTime = System.currentTimeMillis()
+                                                val uploadResult = storageManager.uploadQuoteAudio(
+                                                    userId = currentUser.uid,
+                                                    quoteId = quoteId,
+                                                    audioData = audioData
+                                                )
+                                                
+                                                if (uploadResult.isSuccess) {
+                                                    val downloadUrl = uploadResult.getOrThrow()
+                                                    val uploadTime = System.currentTimeMillis() - uploadStartTime
+                                                    audioUrls[quoteId] = downloadUrl
+                                                    val totalTime = System.currentTimeMillis() - quoteStartTime
+                                                    Log.d("OnboardingSurvey", "✓ Quote $quoteId completed successfully")
+                                                    Log.d("OnboardingSurvey", "  - Generation: ${generationTime}ms, Upload: ${uploadTime}ms, Total: ${totalTime}ms")
+                                                    Log.d("OnboardingSurvey", "  - URL: ${downloadUrl.take(80)}...")
+                                                } else {
+                                                    val error = uploadResult.exceptionOrNull()
+                                                    Log.e("OnboardingSurvey", "✗ Failed to upload audio for quote $quoteId: ${error?.message}")
+                                                    error?.printStackTrace()
+                                                }
+                                            } else {
+                                                val error = audioResult.exceptionOrNull()
+                                                Log.e("OnboardingSurvey", "✗ Failed to generate audio for quote $quoteId: ${error?.message}")
+                                                error?.printStackTrace()
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("OnboardingSurvey", "✗ Exception processing audio for quote $quoteId: ${e.message}", e)
+                                            e.printStackTrace()
+                                        }
+                                        
+                                        val quoteTotalTime = System.currentTimeMillis() - quoteStartTime
+                                        Log.d("OnboardingSurvey", "Completed quote $quoteId in ${quoteTotalTime}ms")
+                                    }
+                                    
+                                    val totalTime = System.currentTimeMillis() - startTime
+                                    Log.d("OnboardingSurvey", "=== Audio generation process completed ===")
+                                    Log.d("OnboardingSurvey", "Total time: ${totalTime}ms")
+                                    Log.d("OnboardingSurvey", "Successfully generated: ${audioUrls.size}/${quotes.size} quotes")
+                                    
+                                    // Save audio URLs to Firestore if any were generated
+                                    if (audioUrls.isNotEmpty()) {
+                                        Log.d("OnboardingSurvey", "Saving ${audioUrls.size} audio URLs to Firestore...")
+                                        val saveStartTime = System.currentTimeMillis()
+                                        val saveAudioUrlsResult = firestoreManager.saveMotivationalQuoteAudioUrls(
+                                            userId = currentUser.uid,
+                                            audioUrls = audioUrls
+                                        )
+                                        
+                                        if (saveAudioUrlsResult.isSuccess) {
+                                            val saveTime = System.currentTimeMillis() - saveStartTime
+                                            Log.d("OnboardingSurvey", "✓ Audio URLs saved successfully in ${saveTime}ms")
+                                        } else {
+                                            val error = saveAudioUrlsResult.exceptionOrNull()
+                                            Log.e("OnboardingSurvey", "✗ Failed to save audio URLs: ${error?.message}")
+                                            error?.printStackTrace()
+                                        }
+                                    } else {
+                                        Log.w("OnboardingSurvey", "⚠ No audio URLs to save - all generation attempts failed")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("OnboardingSurvey", "✗ Critical error in audio generation process: ${e.message}", e)
+                                    e.printStackTrace()
+                                }
+                            }
+                            
+                            // Complete onboarding regardless of audio generation (audio happens in background)
                             CoroutineScope(Dispatchers.Main).launch {
                                 isLoading(false)
                                 // Refresh user data
